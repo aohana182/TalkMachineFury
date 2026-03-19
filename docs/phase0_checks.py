@@ -75,7 +75,7 @@ def gate_0a_model_availability():
         inspection_path = DOCS / "gigaam_v3_inspection.txt"
         inspection_path.write_text("".join(out_lines))
         print(f"Inspection written: {inspection_path}")
-        return "gigaam_v3"
+        return "gigaam-v3-e2e-ctc"
     else:
         print("GigaAM v3 NOT FOUND in onnx-asr.")
         print("DECISION: vosk Zipformer2 via sherpa-onnx is primary Russian model.")
@@ -108,7 +108,7 @@ def gate_0d_threading_benchmark(model_name: str):
         opts.inter_op_num_threads = 1
 
         try:
-            sess = onnx_asr.load_model(model_name)
+            sess = onnx_asr.load_model(model_name, sess_options=opts)
         except Exception as e:
             print(f"  intra={intra}: model load failed — {e}")
             results[intra] = float("inf")

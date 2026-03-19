@@ -23,12 +23,12 @@ _model = None
 _backend: str = "unloaded"  # "gigaam_v3" | "vosk" | "unloaded"
 
 
-def load(model_name: str = "GigaamV3E2eCtc", intra_op_num_threads: int = 2) -> None:
+def load(model_name: str = "gigaam-v3-e2e-ctc", intra_op_num_threads: int = 2) -> None:
     """
     Load Russian ASR model.  Call once at server startup.
 
     Args:
-        model_name: "GigaamV3E2eCtc" (onnx-asr) or "vosk:<vosk-model-name>" (sherpa-onnx fallback)
+        model_name: "gigaam-v3-e2e-ctc" (onnx-asr) or "vosk:<vosk-model-name>" (sherpa-onnx fallback)
         intra_op_num_threads: from config.toml, set by Gate 0D benchmark
     """
     global _model, _backend
@@ -44,12 +44,16 @@ def _load_gigaam(model_name: str, intra_op_num_threads: int) -> None:
     global _model, _backend
     try:
         import onnx_asr
-        _model = onnx_asr.load_model(model_name)
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = intra_op_num_threads
+        opts.inter_op_num_threads = 1
+        _model = onnx_asr.load_model(model_name, sess_options=opts)
         _backend = "gigaam_v3"
-        logger.info("Russian ASR: %s loaded", model_name)
+        logger.info("Russian ASR: %s loaded (threads=%d)", model_name, intra_op_num_threads)
     except Exception as e:
         logger.error("Failed to load %s: %s — attempting vosk fallback", model_name, e)
-        _load_vosk("vosk-model-streaming-ru", intra_op_num_threads)
+        _load_vosk("alphacep/vosk-model-ru", intra_op_num_threads)
 
 
 def _load_vosk(model_name: str, intra_op_num_threads: int) -> None:
