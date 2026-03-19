@@ -109,10 +109,10 @@ def transcribe(audio: np.ndarray) -> str:
 
 
 def _transcribe_gigaam(audio: np.ndarray) -> str:
-    text = _model.transcribe(audio)
-    if isinstance(text, list):
-        text = " ".join(text)
-    return text or ""
+    result = _model.recognize(audio, sample_rate=16000)
+    if isinstance(result, list):
+        return " ".join(str(r) for r in result)
+    return str(result) if result else ""
 
 
 def _transcribe_vosk(audio: np.ndarray) -> str:
