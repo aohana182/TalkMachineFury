@@ -27,7 +27,7 @@ def load(intra_op_num_threads: int = 2) -> None:
         from faster_whisper import WhisperModel
 
         _model = WhisperModel(
-            "distil-whisper/distil-small.en",
+            "Systran/faster-distil-whisper-small.en",
             device="cpu",
             compute_type=_compute_type,
             cpu_threads=intra_op_num_threads,
