@@ -149,18 +149,29 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     queue_maxsize = CONFIG.get("server", {}).get("queue_maxsize", 200)
     queue: asyncio.Queue[Optional[bytes]] = asyncio.Queue(maxsize=queue_maxsize)
     session = TranscriptSession(lang=lang)
+
+    # VAD init: must use cached session — never block the event loop here
+    from server.vad import _CACHED_SESS
+    if _CACHED_SESS is None:
+        logger.error("VAD session not preloaded — startup failed silently. Closing.")
+        await ws.send_json({"type": "error", "message": "VAD not ready"})
+        await ws.close()
+        return
     vad = VADSession(
         threshold=CONFIG.get("vad", {}).get("threshold", 0.40),
         min_silence_ms=CONFIG.get("vad", {}).get("min_silence_ms", 450),
-        sess=None,  # uses module-level cached session loaded at startup
+        sess=_CACHED_SESS,
     )
     model = model_for_lang(lang)
     loop = asyncio.get_event_loop()
+    logger.info("Session ready — entering receive/process loop")
 
     async def receiver():
         """Drain WebSocket into queue. Empty frame = stop signal."""
+        logger.info("receiver() started")
         try:
             async for data in ws.iter_bytes():
+                logger.debug("frame received: %d bytes", len(data))
                 if len(data) == 0:
                     await queue.put(None)  # stop sentinel
                     return

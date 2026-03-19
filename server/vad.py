@@ -86,8 +86,14 @@ class VADSession:
         Returns True if voice activity detected in this frame.
         Caller should check should_flush() after each call.
         """
-        assert pcm.dtype == np.float32, "VAD expects float32 PCM"
-        assert len(pcm) == HOP_SIZE, f"VAD expects {HOP_SIZE}-sample frames, got {len(pcm)}"
+        if pcm.dtype != np.float32:
+            pcm = pcm.astype(np.float32)
+        if len(pcm) != HOP_SIZE:
+            # Pad or truncate to HOP_SIZE rather than crash the processor
+            if len(pcm) < HOP_SIZE:
+                pcm = np.pad(pcm, (0, HOP_SIZE - len(pcm)))
+            else:
+                pcm = pcm[:HOP_SIZE]
         self._samples_ingested += len(pcm)
 
         # Prepend context to form 576-sample input

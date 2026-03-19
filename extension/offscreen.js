@@ -84,6 +84,7 @@ async function _initPipeline(stream) {
 
   const source = _audioCtx.createMediaStreamSource(stream);
   source.connect(_workletNode);
+  source.connect(_audioCtx.destination); // passthrough — audio still plays to speakers
 
   _initWebSocket();
   _isRunning = true;
