@@ -1,31 +1,41 @@
 """
-Stateful Silero VAD v4 wrapper.
+Stateful Silero VAD v4 wrapper — onnxruntime only, no torch dependency.
 
 Critical constraint: state tensors h/c MUST be passed between every call.
 Stateless operation reproduces the WhisperScribe predecessor bug (5-17s silent drops).
 State resets only on session start or confirmed silence boundary — never between frames.
+
+Model: silero_vad.onnx downloaded to ~/.cache/silero_vad/ on first use.
+ONNX graph inputs:  input (1, N float32), sr (int64), h (2,1,64 float32), c (2,1,64 float32)
+ONNX graph outputs: output (1,1 float32), hn (2,1,64), cn (2,1,64)
 """
 import pathlib
-from typing import Optional
+import urllib.request
 
 import numpy as np
-import torch
+import onnxruntime as ort
 
 
-# Silero VAD v4 model — downloaded to ~/.cache/torch/hub on first use
-_SILERO_REPO = "snakers4/silero-vad"
-_SILERO_MODEL = "silero_vad"
+_SILERO_URL = "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx"
+_CACHE_DIR = pathlib.Path.home() / ".cache" / "silero_vad"
+_MODEL_PATH = _CACHE_DIR / "silero_vad.onnx"
 
 
-def _load_silero() -> torch.nn.Module:
-    model, _ = torch.hub.load(
-        repo_or_dir=_SILERO_REPO,
-        model=_SILERO_MODEL,
-        force_reload=False,
-        onnx=True,
-    )
-    model.eval()
-    return model
+def _load_silero() -> ort.InferenceSession:
+    """Download Silero VAD ONNX on first use, then load via onnxruntime."""
+    if not _MODEL_PATH.exists():
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"Downloading Silero VAD v4 → {_MODEL_PATH} ...")
+        urllib.request.urlretrieve(_SILERO_URL, _MODEL_PATH)
+        print("Silero VAD download complete.")
+
+    opts = ort.SessionOptions()
+    opts.intra_op_num_threads = 1   # VAD is lightweight; 1 thread is sufficient
+    opts.inter_op_num_threads = 1
+    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+    sess = ort.InferenceSession(str(_MODEL_PATH), sess_options=opts)
+    return sess
 
 
 class VADSession:
@@ -51,11 +61,11 @@ class VADSession:
         self._min_silence_frames = int(min_silence_ms / 1000 * self.SAMPLE_RATE / 512)
         self._max_speech_samples = int(max_speech_s * self.SAMPLE_RATE)
 
-        self._model = _load_silero()
+        self._sess = _load_silero()
 
-        # Silero v4 stateful tensors — must survive across calls
-        self._h = torch.zeros(2, 1, 64)
-        self._c = torch.zeros(2, 1, 64)
+        # Silero v4 stateful tensors — pure numpy, no torch
+        self._h = np.zeros((2, 1, 64), dtype=np.float32)
+        self._c = np.zeros((2, 1, 64), dtype=np.float32)
 
         # Speech accumulation
         self._speech_buffer: list[np.ndarray] = []
@@ -77,11 +87,18 @@ class VADSession:
         assert pcm.dtype == np.float32, "VAD expects float32 PCM"
         self._samples_ingested += len(pcm)
 
-        t = torch.from_numpy(pcm).float().unsqueeze(0)
-        with torch.no_grad():
-            prob, self._h, self._c = self._model(t, self.SAMPLE_RATE, self._h, self._c)
+        audio_in = pcm[np.newaxis, :]  # (1, N)
+        sr = np.array(self.SAMPLE_RATE, dtype=np.int64)
 
-        is_speech = prob.item() > self.threshold
+        out = self._sess.run(None, {
+            "input": audio_in,
+            "sr":    sr,
+            "h":     self._h,
+            "c":     self._c,
+        })
+        prob, self._h, self._c = out[0][0, 0], out[1], out[2]
+
+        is_speech = float(prob) > self.threshold
 
         if is_speech:
             self._in_speech = True
@@ -134,8 +151,8 @@ class VADSession:
         Full reset — call only at session start or on WebSocket reconnect.
         Resets both speech accumulation AND VAD state tensors.
         """
-        self._h = torch.zeros(2, 1, 64)
-        self._c = torch.zeros(2, 1, 64)
+        self._h = np.zeros((2, 1, 64), dtype=np.float32)
+        self._c = np.zeros((2, 1, 64), dtype=np.float32)
         self._speech_buffer.clear()
         self._speech_samples = 0
         self._silence_frames = 0

@@ -23,46 +23,32 @@ _model = None
 _backend: str = "unloaded"  # "gigaam_v3" | "vosk" | "unloaded"
 
 
-def load(model_name: str = "gigaam_v3", intra_op_num_threads: int = 2) -> None:
+def load(model_name: str = "GigaamV3E2eCtc", intra_op_num_threads: int = 2) -> None:
     """
     Load Russian ASR model.  Call once at server startup.
 
     Args:
-        model_name: "gigaam_v3" or "vosk:<vosk-model-name>"
+        model_name: "GigaamV3E2eCtc" (onnx-asr) or "vosk:<vosk-model-name>" (sherpa-onnx fallback)
         intra_op_num_threads: from config.toml, set by Gate 0D benchmark
     """
     global _model, _backend
 
-    if model_name == "gigaam_v3":
-        _load_gigaam(intra_op_num_threads)
-    elif model_name.startswith("vosk:"):
+    if model_name.startswith("vosk:"):
         vosk_name = model_name.split(":", 1)[1]
         _load_vosk(vosk_name, intra_op_num_threads)
     else:
-        raise ValueError(f"Unknown Russian model: {model_name!r}")
+        _load_gigaam(model_name, intra_op_num_threads)
 
 
-def _load_gigaam(intra_op_num_threads: int) -> None:
+def _load_gigaam(model_name: str, intra_op_num_threads: int) -> None:
     global _model, _backend
     try:
         import onnx_asr
-        import onnxruntime as ort
-
-        opts = ort.SessionOptions()
-        opts.intra_op_num_threads = intra_op_num_threads
-        opts.inter_op_num_threads = 1
-
-        try:
-            _model = onnx_asr.load("gigaam_v3_ctc", session_options=opts)
-        except TypeError:
-            # Older onnx-asr versions don't accept session_options
-            _model = onnx_asr.load("gigaam_v3_ctc")
-            logger.warning("onnx-asr: session_options not supported — using defaults")
-
+        _model = onnx_asr.load_model(model_name)
         _backend = "gigaam_v3"
-        logger.info("Russian ASR: GigaAM v3 loaded (intra_threads=%d)", intra_op_num_threads)
+        logger.info("Russian ASR: %s loaded", model_name)
     except Exception as e:
-        logger.error("Failed to load GigaAM v3: %s — attempting vosk fallback", e)
+        logger.error("Failed to load %s: %s — attempting vosk fallback", model_name, e)
         _load_vosk("vosk-model-streaming-ru", intra_op_num_threads)
 
 

@@ -26,12 +26,17 @@ def gate_0a_model_availability():
         print("  Run: pip install onnx-asr onnxruntime")
         return False
 
-    models = onnx_asr.list_models()
+    import onnx_asr.models as _models_mod
+    models = [x for x in dir(_models_mod) if not x.startswith('_')]
     print(f"Available models: {models}")
 
     gigaam_found = any("gigaam" in m.lower() and "v3" in m.lower() for m in models)
     if gigaam_found:
-        model_name = next(m for m in models if "gigaam" in m.lower() and "v3" in m.lower())
+        # Prefer CTC variant (faster on CPU than RNNT)
+        model_name = next(
+            (m for m in models if "gigaam" in m.lower() and "v3" in m.lower() and "ctc" in m.lower()),
+            next(m for m in models if "gigaam" in m.lower() and "v3" in m.lower())
+        )
         print(f"GigaAM v3 FOUND: {model_name}")
 
         # Inspect ONNX inputs/outputs
@@ -39,7 +44,7 @@ def gate_0a_model_availability():
         try:
             import onnx_asr as asr_lib
             # Try to get model path or inspect session
-            sess = onnx_asr.load(model_name)
+            sess = onnx_asr.load_model(model_name)
             # Check if it exposes underlying ort session
             ort_sess = getattr(sess, '_session', None) or getattr(sess, 'session', None)
             if ort_sess and hasattr(ort_sess, 'get_inputs'):
@@ -103,10 +108,9 @@ def gate_0d_threading_benchmark(model_name: str):
         opts.inter_op_num_threads = 1
 
         try:
-            sess = onnx_asr.load(model_name, session_options=opts)
-        except TypeError:
-            # If load() doesn't accept session_options, skip detailed bench
-            print(f"  intra={intra}: cannot pass SessionOptions to onnx_asr.load() — skipping")
+            sess = onnx_asr.load_model(model_name)
+        except Exception as e:
+            print(f"  intra={intra}: model load failed — {e}")
             results[intra] = float("inf")
             continue
 

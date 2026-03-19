@@ -13,7 +13,7 @@ intra_op_num_threads = 2       # placeholder — set by phase0_checks.py Gate 0D
 inter_op_num_threads = 1
 
 [models]
-russian = "gigaam_v3"          # placeholder — confirmed by phase0_checks.py Gate 0A
+russian = "GigaamV3E2eCtc"     # confirmed by phase0_checks.py Gate 0A
 # Options: "gigaam_v3" (onnx-asr) | "vosk:<model-name>" (sherpa-onnx fallback)
 
 [audio]

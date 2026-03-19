@@ -60,21 +60,23 @@ class TestVADSessionContract:
 
     def _make_vad(self, threshold=0.40, min_silence_ms=450):
         from unittest.mock import MagicMock, patch
-        import torch
+        import numpy as np
 
-        mock_model = MagicMock()
-        h0 = torch.zeros(2, 1, 64)
-        c0 = torch.zeros(2, 1, 64)
+        # Mock ort.InferenceSession — vad.py calls sess.run(None, {...})
+        mock_sess = MagicMock()
 
-        def fake_forward(t, sr, h, c):
+        def fake_run(output_names, inputs):
             # Return speech probability based on audio RMS
-            rms = t.abs().mean().item()
-            prob = torch.tensor([[1.0 if rms > 0.05 else 0.0]])
-            return prob, h, c
+            audio = inputs["input"]
+            rms = float(np.abs(audio).mean())
+            prob = np.array([[1.0 if rms > 0.05 else 0.0]], dtype=np.float32)
+            h = inputs["h"].copy()
+            c = inputs["c"].copy()
+            return [prob, h, c]
 
-        mock_model.side_effect = fake_forward
+        mock_sess.run.side_effect = fake_run
 
-        with patch("server.vad._load_silero", return_value=mock_model):
+        with patch("server.vad._load_silero", return_value=mock_sess):
             from server.vad import VADSession
             return VADSession(threshold=threshold, min_silence_ms=min_silence_ms)
 
@@ -120,17 +122,16 @@ class TestVADSessionContract:
 
     def test_state_tensors_not_reset_between_frames(self):
         """h/c must carry forward across frames — no per-frame reset."""
-        import torch
         vad = self._make_vad()
         tone = _make_tone(0.1)
         chunk = tone[:512]
 
-        h_before = vad._h.clone()
         vad.ingest_pcm(chunk)
-        # After call, h should have changed (model updated it)
-        # We can't assert exact values, but they shouldn't be re-initialized
+        # h/c must be numpy arrays, not None
         assert vad._h is not None
         assert vad._c is not None
+        assert vad._h.shape == (2, 1, 64)
+        assert vad._c.shape == (2, 1, 64)
 
     def test_reset_state_clears_everything(self):
         vad = self._make_vad()

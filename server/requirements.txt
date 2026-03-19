@@ -1,7 +1,8 @@
 onnx-asr>=0.2.0
 onnxruntime>=1.17.0
 faster-whisper>=1.0.0
-torch>=2.1.0
+# torch: NOT required. VAD uses onnxruntime directly (silero_vad.onnx via urllib).
+# Only install torch if you want to use torch.hub for other purposes.
 scipy>=1.11.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
