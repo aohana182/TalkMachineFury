@@ -26,14 +26,11 @@ That's it. Creates a venv, installs all deps, downloads models, creates `C:\Tran
 
 ---
 
-## Run
+## Load the extension
 
-```bat
-.venv\Scripts\activate
-uvicorn server.main:app --port 8765
-```
+`brave://extensions` → Developer mode → Load unpacked → select `extension/`
 
-Load the extension: `brave://extensions` → Developer mode → Load unpacked → select `extension/`
+One-time only. The server starts automatically after this.
 
 ---
 

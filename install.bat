@@ -60,14 +60,26 @@ if not exist "C:\Transcripts" (
     echo [OK] C:\Transcripts exists
 )
 
+:: Register native messaging host (so extension can auto-start the server)
+echo Registering native messaging host...
+set HOST_BAT=%~dp0server\host.bat
+set MANIFEST_SRC=%~dp0server\host_manifest.json
+set MANIFEST_DST=%~dp0server\host_manifest_registered.json
+
+:: Write manifest with actual host.bat path (replace backslashes with double backslashes for JSON)
+powershell -Command "(Get-Content '%MANIFEST_SRC%') -replace 'PLACEHOLDER_REPLACED_BY_INSTALL_BAT', ('%HOST_BAT%' -replace '\\\\', '\\\\' -replace '\\', '\\\\') | Set-Content '%MANIFEST_DST%'"
+
+:: Register in Windows registry for Brave and Chrome
+reg add "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.talkmachinefury.host" /ve /t REG_SZ /d "%MANIFEST_DST:\=\\%" /f >nul
+reg add "HKCU\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.talkmachinefury.host" /ve /t REG_SZ /d "%MANIFEST_DST:\=\\%" /f >nul
+echo [OK] Native messaging host registered
+
 echo.
 echo === Setup complete ===
 echo.
-echo To start the server:
-echo   .venv\Scripts\activate
-echo   uvicorn server.main:app --port 8765
-echo.
-echo Then load the extension in Brave/Chrome:
+echo Load the extension in Brave/Chrome:
 echo   brave://extensions -^> Developer mode -^> Load unpacked -^> select extension\
+echo.
+echo The server starts automatically when you click Start in the extension.
 echo.
 endlocal

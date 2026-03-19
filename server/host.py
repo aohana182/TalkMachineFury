@@ -1,29 +1,76 @@
 """
-Native Messaging Host stub — v1.
+Native Messaging Host — starts the uvicorn server on demand.
 
-In v1, users start the server manually:
-    uvicorn server.main:app --port 8765
-
-This file is a placeholder for a future native messaging host that would
-allow the Chrome extension to auto-start the Python server.
-
-v1 limitation: user must start server manually. The popup shows
-"Start the server first" if /health is unreachable.
-
-v1.1 plan (post-launch):
-  - Register this script as a native messaging host
-  - Extension sends 'start-server' message → host spawns uvicorn
-  - Host monitors server health, restarts on crash
+Chrome protocol: 4-byte LE uint32 length prefix + UTF-8 JSON on stdin/stdout.
+Messages: {"type": "start-server"} → {"ok": true} | {"ok": false, "error": "..."}
 """
+import json
+import os
+import pathlib
+import struct
+import subprocess
+import sys
+import time
+import urllib.request
+
+
+PORT = 8765
+ROOT = pathlib.Path(__file__).parent.parent
+VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
+
+
+def _read_message() -> dict:
+    raw_len = sys.stdin.buffer.read(4)
+    if len(raw_len) < 4:
+        sys.exit(0)
+    length = struct.unpack("<I", raw_len)[0]
+    return json.loads(sys.stdin.buffer.read(length).decode("utf-8"))
+
+
+def _send_message(msg: dict) -> None:
+    encoded = json.dumps(msg).encode("utf-8")
+    sys.stdout.buffer.write(struct.pack("<I", len(encoded)))
+    sys.stdout.buffer.write(encoded)
+    sys.stdout.buffer.flush()
+
+
+def _server_running() -> bool:
+    try:
+        urllib.request.urlopen(f"http://localhost:{PORT}/health", timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def _start_server() -> None:
+    python = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
+    subprocess.Popen(
+        [python, "-m", "uvicorn", "server.main:app", "--port", str(PORT),
+         "--log-level", "warning"],
+        cwd=str(ROOT),
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    # Wait up to 30s for server to be ready
+    for _ in range(30):
+        time.sleep(1)
+        if _server_running():
+            return
+    raise RuntimeError("Server did not start within 30s")
 
 
 def main():
-    print("Talk Machine Fury — Native Messaging Host")
-    print("v1: Start the server manually:")
-    print("    cd /path/to/TalkMachineFury")
-    print("    uvicorn server.main:app --port 8765")
-    print()
-    print("This script will become a full host in v1.1.")
+    msg = _read_message()
+    if msg.get("type") == "start-server":
+        try:
+            if not _server_running():
+                _start_server()
+            _send_message({"ok": True})
+        except Exception as e:
+            _send_message({"ok": False, "error": str(e)})
+    else:
+        _send_message({"ok": False, "error": f"Unknown message type: {msg.get('type')}"})
 
 
 if __name__ == "__main__":

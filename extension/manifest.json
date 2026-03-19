@@ -10,7 +10,8 @@
     "offscreen",
     "storage",
     "alarms",
-    "activeTab"
+    "activeTab",
+    "nativeMessaging"
   ],
 
   "host_permissions": [

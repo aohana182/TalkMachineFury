@@ -105,10 +105,31 @@ async function ensureMicPermission() {
   });
 }
 
+async function ensureServer() {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendNativeMessage(
+      'com.talkmachinefury.host',
+      { type: 'start-server' },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          // Native host not registered — server must be started manually
+          console.warn('[TMF] Native host unavailable:', chrome.runtime.lastError.message);
+          resolve(); // non-fatal — popup will show "Start the server first" if down
+        } else if (response?.ok) {
+          resolve();
+        } else {
+          reject(new Error(response?.error ?? 'Server failed to start'));
+        }
+      }
+    );
+  });
+}
+
 async function handleStart(msg) {
   const { lang } = msg;
 
   await chrome.storage.session.set({ tmf_state: 'connecting', tmf_lang: lang });
+  await ensureServer();
   await ensureMicPermission();
   await ensureOffscreen();
 
