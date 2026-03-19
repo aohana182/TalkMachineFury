@@ -1,0 +1,9 @@
+PLACEHOLDER — Run docs/phase0_checks.py to populate this file.
+
+Expected content after Gate 0A:
+  - List of available onnx-asr models
+  - GigaAM v3 input/output tensor names and shapes
+  - Whether streaming state tensors (h, c) are present
+  - Decision: streaming mode vs fixed-window mode
+
+This file must be committed with real values before Phase 1A begins.

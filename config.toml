@@ -1,0 +1,27 @@
+# Talk Machine Fury — Runtime Configuration
+# TEMPLATE — overwritten by docs/phase0_checks.py after Gate 0D benchmark.
+# Do not change intra_op_num_threads without re-running the benchmark.
+
+[vad]
+threshold = 0.40
+min_silence_ms = 450
+# threshold=0.40: FNR (dropped speech) costs more than FPR (noise transcribed).
+# Changing threshold requires a counted measurement, not a judgment call.
+
+[inference]
+intra_op_num_threads = 2       # placeholder — set by phase0_checks.py Gate 0D
+inter_op_num_threads = 1
+
+[models]
+russian = "gigaam_v3"          # placeholder — confirmed by phase0_checks.py Gate 0A
+# Options: "gigaam_v3" (onnx-asr) | "vosk:<model-name>" (sherpa-onnx fallback)
+
+[audio]
+target_sample_rate = 16000
+# hardware_sample_rate is set by Gate 0B (test_audio_rate.html)
+# Expected: 44100 or 48000 on Windows
+
+[server]
+host = "localhost"
+port = 8765
+queue_maxsize = 200            # ~2s buffer at 16kHz s16le 512-sample frames

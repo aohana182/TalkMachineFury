@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Talk Machine Fury",
+  "version": "0.1.0",
+  "description": "Real-time Russian+English meeting transcription. Local. No cloud.",
+  "minimum_chrome_version": "116",
+
+  "permissions": [
+    "tabCapture",
+    "offscreen",
+    "storage",
+    "alarms",
+    "activeTab"
+  ],
+
+  "host_permissions": [
+    "http://localhost:8765/*",
+    "ws://localhost:8765/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Talk Machine Fury"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["worklet.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gate 0B — AudioContext Sample Rate Check</title>
+  <style>
+    body { font-family: monospace; padding: 24px; background: #111; color: #eee; }
+    h2 { color: #4af; }
+    #result { font-size: 1.4em; margin-top: 16px; }
+    .ok { color: #4f4; }
+    .warn { color: #fa4; }
+    .error { color: #f44; }
+  </style>
+</head>
+<body>
+  <h2>Gate 0B — Hardware AudioContext Sample Rate</h2>
+  <p>Open Chrome DevTools Console to see the output, or read the result below.</p>
+  <div id="result">Checking...</div>
+
+  <script>
+    (function () {
+      const ctx = new AudioContext();
+      const rate = ctx.sampleRate;
+      ctx.close();
+
+      const el = document.getElementById('result');
+      if (rate === 16000) {
+        el.className = 'ok';
+        el.textContent = `Hardware rate: ${rate} Hz ✓ — No downsampler needed (unlikely on Windows).`;
+        console.log('Hardware rate:', rate, '— No downsampler needed.');
+      } else {
+        el.className = 'warn';
+        el.textContent = `Hardware rate: ${rate} Hz — Downsampler REQUIRED in AudioWorklet (worklet.js).`;
+        console.log('Hardware rate:', rate, '— Downsampler required.');
+        console.log('Record this value in config.toml under [audio].hardware_sample_rate');
+      }
+
+      // Log to console for DevTools visibility
+      console.log('=== Gate 0B Result ===');
+      console.log('window.AudioContext sampleRate:', rate);
+      console.log('Expected on Windows: 44100 or 48000');
+      console.log('Worklet processorOptions.inputSampleRate must match this value.');
+    })();
+  </script>
+</body>
+</html>
