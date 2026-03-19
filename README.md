@@ -49,16 +49,50 @@ Change the save folder in `config.toml` → `[server] transcript_folder`.
 ## Architecture
 
 ```
-Extension (MV3)
-  offscreen.js     tab audio via tabCapture + mic via getUserMedia → mixed PCM
-  worklet.js       48kHz → 16kHz lerp downsample, 512-sample Int16 frames
+Chrome Extension (MV3)
+  background.js    service worker — coordinates start/stop, owns offscreen lifecycle
+                   on Start: native host → mic permission → offscreen → tabCapture
+  offscreen.js     session owner — AudioContext at hardware rate (48kHz)
+                   tab audio (tabCapture) + mic (getUserMedia) → mixed into worklet
+  worklet.js       AudioWorkletProcessor — lerp 48→16kHz, 512-sample Int16 frames → WebSocket
+  popup.js         state machine (idle/connecting/listening/transcribing/stopped/error)
 
-Server (FastAPI :8765)
-  vad.py           Silero VAD v4 (ONNX, stateful) — segments speech
-  asr_ru.py        GigaAM v3 CTC via onnx-asr — Russian
-  asr_en.py        distil-whisper distil-small.en via faster-whisper — English
-  main.py          /asr WebSocket, /health GET, /save POST
+Server (FastAPI localhost:8765)
+  host.py          native messaging host — starts uvicorn on demand, no terminal needed
+  vad.py           Silero VAD v4 (ONNX, stateful) — segments speech at silence boundaries
+                   state tensor (2,1,128) survives across frames — stateless = predecessor bug
+  asr_ru.py        GigaAM v3 CTC via onnx-asr — Russian ASR
+  asr_en.py        distil-whisper distil-small.en via faster-whisper — English ASR
+  main.py          /asr WebSocket (PCM in, cumulative lines[] out)
+                   /health GET, /save POST
+
+Data flow:
+  tab + mic audio (48kHz PCM)
+    → worklet (downsample → 16kHz Int16)
+      → WebSocket /asr
+        → VAD (silence detection, 10s max segment)
+          → GigaAM v3 / distil-whisper
+            → cumulative lines[] → popup
+              → Save → C:\Transcripts\<filename>.txt
 ```
+
+---
+
+## Security
+
+| Surface | Status | Notes |
+|---------|--------|-------|
+| Audio data | ✓ Never leaves the machine | WebSocket is localhost only |
+| Transcripts | ✓ Local disk only | `C:\Transcripts\`, no upload |
+| Models | ✓ Downloaded once, run offline | onnx-asr, faster-whisper |
+| Server port | ⚠ Localhost, no auth | Any process on the machine can POST to `/save` or connect to `/asr` |
+| Native host | ⚠ Executes on extension Start | Registered per-user in HKCU, not HKLM |
+| Mic capture | ⚠ Captures default mic | No indicator light beyond browser's own mic-in-use icon |
+| Tab audio | ⚠ Captures entire tab audio | Including any tab — not scoped to meeting apps |
+
+**Gaps:**
+- `/save` accepts arbitrary file paths — a malicious page that can reach `localhost:8765` could write files anywhere on disk. Acceptable for single-user local use; not acceptable if the server is ever exposed beyond localhost.
+- No authentication on the WebSocket — any local process can inject audio or read transcripts.
 
 ---
 
@@ -80,7 +114,6 @@ Server (FastAPI :8765)
 
 - Code-switching (Russian sentences with English terms) degrades accuracy
 - No speaker diarization — all lines attributed to speaker 0
-- Server must be started manually (no auto-start)
 - Mic selection is OS default — no in-app device picker
 - `onnxruntime` requires [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) on fresh Windows installs. If `install.bat` fails on the `onnxruntime` step, install that first and re-run.
 
