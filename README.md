@@ -85,6 +85,7 @@ Server (FastAPI :8765)
 - No speaker diarization — all lines attributed to speaker 0
 - Server must be started manually (no auto-start)
 - Mic selection is OS default — no in-app device picker
+- `onnxruntime` requires [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) on fresh Windows installs. If `install.bat` fails on the `onnxruntime` step, install that first and re-run.
 
 ---
 
