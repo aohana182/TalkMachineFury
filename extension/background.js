@@ -116,6 +116,8 @@ async function handleStart(msg) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw new Error('No active tab');
 
+  await chrome.storage.session.set({ tmf_tab_title: tab.title || 'meeting' });
+
   const streamId = await new Promise((resolve, reject) => {
     chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (id) => {
       if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));

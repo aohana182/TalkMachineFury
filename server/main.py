@@ -105,6 +105,7 @@ def health():
         "models": loaded_langs(),
         "vad_discard_rate_avg": round(avg_discard, 4) if avg_discard is not None else None,
         "sessions_completed": len(_session_discard_rates),
+        "transcript_folder": CONFIG.get("server", {}).get("transcript_folder", "C:/Transcripts"),
     }
 
 

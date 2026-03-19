@@ -164,16 +164,32 @@ btnStop.addEventListener('click', async () => {
 
 btnSave.addEventListener('click', async () => {
   const text = _transcript.map(l => l.text).join('\n');
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `transcript_${ts}.txt`;
 
-  // Use downloads API to save (requires downloads permission)
-  // Fallback: copy to clipboard
+  // Build filename: YYYY-MM-DD_HH-MM_<tab-title>_<lang>.txt
+  const { tmf_tab_title, tmf_lang } = await chrome.storage.session.get(['tmf_tab_title', 'tmf_lang']);
+  const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
+  const slug = (tmf_tab_title || 'meeting')
+    .replace(/[\\/:*?"<>|]/g, '')   // strip illegal filename chars
+    .replace(/\s+/g, '_')
+    .slice(0, 60);
+  const lang = tmf_lang || 'ru';
+  const filename = `${ts}_${slug}_${lang}.txt`;
+
   try {
-    await navigator.clipboard.writeText(text);
-    statusBar.textContent = 'Copied to clipboard';
-  } catch {
-    statusBar.textContent = 'Save failed — copy manually';
+    const r = await fetch('http://localhost:8765/health');
+    const { transcript_folder } = await r.json();
+    const path = `${transcript_folder}/${filename}`;
+
+    const resp = await fetch('http://localhost:8765/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, path }),
+    });
+    const result = await resp.json();
+    if (result.error) throw new Error(result.error);
+    statusBar.textContent = `Saved: ${path}`;
+  } catch (e) {
+    statusBar.textContent = `Save failed: ${e.message}`;
   }
 });
 

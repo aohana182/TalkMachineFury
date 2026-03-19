@@ -30,3 +30,4 @@ hardware_sample_rate = 48000   # confirmed by Gate 0B on target machine
 host = "localhost"
 port = 8765
 queue_maxsize = 600  # ~20s buffer — headroom for ASR inference on 10s segments
+transcript_folder = "C:/Transcripts"
