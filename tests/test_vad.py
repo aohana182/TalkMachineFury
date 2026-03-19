@@ -66,13 +66,11 @@ class TestVADSessionContract:
         mock_sess = MagicMock()
 
         def fake_run(output_names, inputs):
-            # Return speech probability based on audio RMS
             audio = inputs["input"]
             rms = float(np.abs(audio).mean())
             prob = np.array([[1.0 if rms > 0.05 else 0.0]], dtype=np.float32)
-            h = inputs["h"].copy()
-            c = inputs["c"].copy()
-            return [prob, h, c]
+            new_state = inputs["state"].copy()
+            return [prob, new_state]
 
         mock_sess.run.side_effect = fake_run
 
@@ -128,10 +126,9 @@ class TestVADSessionContract:
 
         vad.ingest_pcm(chunk)
         # h/c must be numpy arrays, not None
-        assert vad._h is not None
-        assert vad._c is not None
-        assert vad._h.shape == (2, 1, 64)
-        assert vad._c.shape == (2, 1, 64)
+        assert vad._state is not None
+        assert vad._state.shape == (2, 1, 128)
+
 
     def test_reset_state_clears_everything(self):
         vad = self._make_vad()
@@ -142,6 +139,8 @@ class TestVADSessionContract:
         assert not vad.has_pending_speech
         assert vad._samples_ingested == 0
         assert vad._samples_dispatched == 0
+        assert np.all(vad._state == 0)
+        assert np.all(vad._context == 0)
 
 
 # ---------------------------------------------------------------------------
