@@ -32,12 +32,14 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module")
-def app():
-    """Return FastAPI app for in-process testing."""
+def client():
+    """Module-scoped TestClient that runs the full lifespan (startup + teardown)."""
     import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
     from server.main import app
-    return app
+    from fastapi.testclient import TestClient
+    with TestClient(app) as c:
+        yield c
 
 
 @pytest.fixture(scope="module")
@@ -49,9 +51,7 @@ def ru_wav_bytes():
 
 
 class TestHealthEndpoint:
-    def test_health_ok(self, app):
-        from fastapi.testclient import TestClient
-        client = TestClient(app)
+    def test_health_ok(self, client):
         r = client.get("/health")
         assert r.status_code == 200
         body = r.json()
@@ -61,10 +61,7 @@ class TestHealthEndpoint:
 
 
 class TestASRWebSocket:
-    def test_ru_wav_produces_transcript(self, app, ru_wav_bytes):
-        from fastapi.testclient import TestClient
-        client = TestClient(app)
-
+    def test_ru_wav_produces_transcript(self, client, ru_wav_bytes):
         received_messages = []
 
         with client.websocket_connect("/asr?lang=ru") as ws:
@@ -103,20 +100,14 @@ class TestASRWebSocket:
         all_text = " ".join(line["text"] for line in last["lines"])
         assert len(all_text) > 0, "All transcript lines are empty"
 
-    def test_empty_audio_returns_ready_to_stop(self, app):
-        from fastapi.testclient import TestClient
-        client = TestClient(app)
-
+    def test_empty_audio_returns_ready_to_stop(self, client):
         with client.websocket_connect("/asr?lang=ru") as ws:
             ws.receive_json()  # config
             ws.send_bytes(b"")  # immediate stop
             msg = ws.receive_json()
             assert msg["type"] == "ready_to_stop"
 
-    def test_invalid_lang_closes_with_error(self, app):
-        from fastapi.testclient import TestClient
-        client = TestClient(app)
-
+    def test_invalid_lang_closes_with_error(self, client):
         with client.websocket_connect("/asr?lang=xx") as ws:
             msg = ws.receive_json()
             assert msg["type"] == "error"

@@ -22,6 +22,7 @@ import logging
 import pathlib
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from typing import Optional
 
 import numpy as np
@@ -73,20 +74,24 @@ CONFIG = _load_config()
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Talk Machine Fury", version="0.1.0")
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="asr")
 
 # Per-connection VAD discard rates for /health
 _session_discard_rates: list[float] = []
 
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    loop = asyncio.get_running_loop()
     logger.info("Loading Silero VAD...")
-    await asyncio.get_event_loop().run_in_executor(_executor, preload_silero)
+    await loop.run_in_executor(_executor, preload_silero)
     logger.info("Loading ASR models...")
-    await asyncio.get_event_loop().run_in_executor(_executor, load_models, CONFIG)
+    await loop.run_in_executor(_executor, load_models, CONFIG)
     logger.info("Models ready: %s", loaded_langs())
+    yield
+
+
+app = FastAPI(title="Talk Machine Fury", version="0.1.0", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +170,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
         sess=_CACHED_SESS,
     )
     model = model_for_lang(lang)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     logger.info("Session ready — entering receive/process loop")
 
     async def receiver():

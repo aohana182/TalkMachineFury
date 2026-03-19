@@ -63,15 +63,21 @@ if not exist "C:\Transcripts" (
 :: Register native messaging host (so extension can auto-start the server)
 echo Registering native messaging host...
 set HOST_BAT=%~dp0server\host.bat
-set MANIFEST_SRC=%~dp0server\host_manifest.json
 set MANIFEST_DST=%~dp0server\host_manifest_registered.json
 
-:: Write manifest with actual host.bat path (replace backslashes with double backslashes for JSON)
-powershell -Command "(Get-Content '%MANIFEST_SRC%') -replace 'PLACEHOLDER_REPLACED_BY_INSTALL_BAT', ('%HOST_BAT%' -replace '\\\\', '\\\\' -replace '\\', '\\\\') | Set-Content '%MANIFEST_DST%'"
+:: Use Python to write the manifest — avoids backslash escaping issues in PowerShell
+python -c "import json, pathlib; src = json.loads(pathlib.Path('server/host_manifest.json').read_text()); src['path'] = r'%HOST_BAT%'; pathlib.Path('server/host_manifest_registered.json').write_text(json.dumps(src, indent=2))"
+if errorlevel 1 (
+    echo [ERROR] Failed to generate host manifest
+    exit /b 1
+)
 
-:: Register in Windows registry for Brave and Chrome
-reg add "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.talkmachinefury.host" /ve /t REG_SZ /d "%MANIFEST_DST:\=\\%" /f >nul
-reg add "HKCU\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.talkmachinefury.host" /ve /t REG_SZ /d "%MANIFEST_DST:\=\\%" /f >nul
+:: Register in Windows registry for Brave and Chrome (PowerShell handles paths reliably)
+powershell -Command "foreach ($browser in @('Google\Chrome','BraveSoftware\Brave-Browser')) { $key = \"HKCU:\Software\$browser\NativeMessagingHosts\com.talkmachinefury.host\"; New-Item -Path $key -Force | Out-Null; Set-ItemProperty -Path $key -Name '(default)' -Value '%MANIFEST_DST%' }"
+if errorlevel 1 (
+    echo [ERROR] Failed to register native messaging host
+    exit /b 1
+)
 echo [OK] Native messaging host registered
 
 echo.

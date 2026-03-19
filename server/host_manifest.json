@@ -1,6 +1,6 @@
 {
   "name": "com.talkmachinefury.host",
-  "description": "Talk Machine Fury — starts the local ASR server on demand",
+  "description": "Talk Machine Fury - starts the local ASR server on demand",
   "path": "PLACEHOLDER_REPLACED_BY_INSTALL_BAT",
   "type": "stdio",
   "allowed_origins": [

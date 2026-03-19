@@ -4,10 +4,15 @@ Standalone integration runner — starts server in subprocess, sends fixture, ch
 Run: python tests/run_integration.py
 """
 import asyncio
+import io
 import json
 import pathlib
 import subprocess
 import sys
+
+# Force UTF-8 output — Windows console defaults to cp1252 which can't print Cyrillic
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 import time
 import wave
 
