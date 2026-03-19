@@ -79,10 +79,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+async function ensureMicPermission() {
+  // Open a visible window to trigger the mic permission dialog.
+  // Offscreen documents cannot show permission prompts — this primes the grant.
+  // The window closes itself after getUserMedia resolves or rejects.
+  return new Promise((resolve) => {
+    chrome.windows.create({
+      url: chrome.runtime.getURL('mic-permission.html'),
+      type: 'popup',
+      width: 1,
+      height: 1,
+      left: -10,
+      top: -10,
+      focused: false,
+    }, (win) => {
+      const checkClosed = setInterval(() => {
+        chrome.windows.get(win.id, (w) => {
+          if (chrome.runtime.lastError || !w) {
+            clearInterval(checkClosed);
+            resolve();
+          }
+        });
+      }, 200);
+    });
+  });
+}
+
 async function handleStart(msg) {
   const { lang } = msg;
 
   await chrome.storage.session.set({ tmf_state: 'connecting', tmf_lang: lang });
+  await ensureMicPermission();
   await ensureOffscreen();
 
   // Get streamId for the active tab

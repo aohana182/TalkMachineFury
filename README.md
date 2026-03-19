@@ -16,8 +16,8 @@ cd TalkMachineFury
 pip install -r server/requirements.txt
 ```
 
-On first run, models are downloaded automatically:
-- Silero VAD v4 (~2MB, via `torch.hub`)
+On first run, models are downloaded automatically (~400MB total):
+- Silero VAD v4 (via `onnx-asr`)
 - GigaAM v3 CTC (~220MB, via `onnx-asr`)
 - distil-whisper/distil-small.en (~166MB, via `faster-whisper`)
 
@@ -122,6 +122,4 @@ Short version:
 
 ---
 
-## Version history
-
-- **v0.1.0** — Initial release. Russian + English. Local. Stateful VAD. Cumulative transcript.
+See [CHANGELOG.md](CHANGELOG.md) for version history.

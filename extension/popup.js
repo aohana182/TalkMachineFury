@@ -145,15 +145,6 @@ btnStart.addEventListener('click', async () => {
     return;
   }
 
-  // Request mic permission from popup (visible page — Chrome shows the dialog here).
-  // The stream is released immediately; offscreen.js opens its own.
-  try {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-    s.getTracks().forEach(t => t.stop());
-  } catch (e) {
-    console.warn('[TMF popup] Mic permission denied — only tab audio will be transcribed');
-  }
-
   const lang = langSelect.value;
   const response = await chrome.runtime.sendMessage({ type: 'start-capture', lang });
   if (response?.ok) {
