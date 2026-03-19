@@ -9,7 +9,7 @@ min_silence_ms = 450
 # Changing threshold requires a counted measurement, not a judgment call.
 
 [inference]
-intra_op_num_threads = 1
+intra_op_num_threads = 2
 inter_op_num_threads = 1
 # Value determined by threading benchmark in Gate 0D.
 # Changing requires a new benchmark run.
@@ -18,6 +18,11 @@ inter_op_num_threads = 1
 russian = "gigaam-v3-e2e-ctc"
 # gigaam_v3 = use onnx-asr
 # vosk:... = use sherpa-onnx
+
+[audio]
+target_sample_rate = 16000
+hardware_sample_rate = 48000   # confirmed by Gate 0B on target machine
+# Ratio = 3:1 (exact integer) — lerp downsampler in worklet.js has zero aliasing
 
 [server]
 host = "localhost"
