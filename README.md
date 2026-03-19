@@ -9,24 +9,27 @@ Real-time Russian + English meeting transcription. Fully local. No cloud. No lag
 
 ## Requirements
 
-- Python 3.10+
+- Windows 10/11
+- Python 3.10+ — [python.org](https://python.org) — check "Add Python to PATH" during install
 - Brave or Chrome (MV3)
-- ~400MB disk for models (auto-downloaded on first run)
+- ~400MB disk for models (downloaded during setup)
 
 ---
 
 ## Install
 
-```bash
-pip install -r server/requirements.txt
+```bat
+install.bat
 ```
+
+That's it. Creates a venv, installs all deps, downloads models, creates `C:\Transcripts`.
 
 ---
 
 ## Run
 
-```bash
-# Start the ASR server
+```bat
+.venv\Scripts\activate
 uvicorn server.main:app --port 8765
 ```
 
