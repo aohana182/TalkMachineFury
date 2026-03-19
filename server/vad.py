@@ -20,12 +20,23 @@ HOP_SIZE = 512       # samples per frame at 16kHz
 CONTEXT_SIZE = 64    # samples prepended to each frame
 FRAME_SIZE = CONTEXT_SIZE + HOP_SIZE  # 576
 
+_CACHED_SESS: rt.InferenceSession | None = None
 
-def _load_silero() -> rt.InferenceSession:
-    """Download onnx-community/silero-vad via onnx_asr and return ort session."""
+
+def preload_silero() -> None:
+    """Download and cache Silero VAD session. Call once at server startup."""
+    global _CACHED_SESS
+    if _CACHED_SESS is not None:
+        return
     import onnx_asr
     vad = onnx_asr.load_vad("silero")
-    return vad._model  # InferenceSession
+    _CACHED_SESS = vad._model
+
+
+def _load_silero() -> rt.InferenceSession:
+    if _CACHED_SESS is None:
+        preload_silero()
+    return _CACHED_SESS
 
 
 class VADSession:
@@ -46,12 +57,13 @@ class VADSession:
         threshold: float = 0.40,
         min_silence_ms: int = 450,
         max_speech_s: float = 30.0,
+        sess: rt.InferenceSession | None = None,
     ):
         self.threshold = threshold
         self._min_silence_frames = int(min_silence_ms / 1000 * self.SAMPLE_RATE / HOP_SIZE)
         self._max_speech_samples = int(max_speech_s * self.SAMPLE_RATE)
 
-        self._sess = _load_silero()
+        self._sess = sess if sess is not None else _load_silero()
 
         # Stateful tensors — survive across frames
         self._state = np.zeros((2, 1, 128), dtype=np.float32)

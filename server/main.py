@@ -44,7 +44,7 @@ from fastapi.responses import JSONResponse
 
 from server.models import load_models, loaded_langs, model_for_lang
 from server.transcript import TranscriptSession
-from server.vad import VADSession
+from server.vad import VADSession, preload_silero
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -82,8 +82,10 @@ _session_discard_rates: list[float] = []
 
 @app.on_event("startup")
 async def startup():
+    logger.info("Loading Silero VAD...")
+    await asyncio.get_event_loop().run_in_executor(_executor, preload_silero)
     logger.info("Loading ASR models...")
-    load_models(CONFIG)
+    await asyncio.get_event_loop().run_in_executor(_executor, load_models, CONFIG)
     logger.info("Models ready: %s", loaded_langs())
 
 
@@ -150,6 +152,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     vad = VADSession(
         threshold=CONFIG.get("vad", {}).get("threshold", 0.40),
         min_silence_ms=CONFIG.get("vad", {}).get("min_silence_ms", 450),
+        sess=None,  # uses module-level cached session loaded at startup
     )
     model = model_for_lang(lang)
     loop = asyncio.get_event_loop()
