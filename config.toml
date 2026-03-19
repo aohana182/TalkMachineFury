@@ -5,8 +5,10 @@
 [vad]
 threshold = 0.40
 min_silence_ms = 450
+max_speech_s = 10.0
 # threshold=0.40: FNR (dropped speech) costs more than FPR (noise transcribed)
 # Changing threshold requires a counted measurement, not a judgment call.
+# max_speech_s=10: limits segment length to keep ASR latency under ~2s.
 
 [inference]
 intra_op_num_threads = 2
@@ -27,4 +29,4 @@ hardware_sample_rate = 48000   # confirmed by Gate 0B on target machine
 [server]
 host = "localhost"
 port = 8765
-queue_maxsize = 200  # ~2s buffer at 16kHz s16le 512-sample frames
+queue_maxsize = 600  # ~20s buffer — headroom for ASR inference on 10s segments

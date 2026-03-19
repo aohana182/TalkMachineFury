@@ -6,6 +6,8 @@
 </head>
 <body>
   <!-- Offscreen document — no visible UI. Owns AudioContext and WebSocket. -->
+  <!-- Audio passthrough: plays captured tab audio back to speakers -->
+  <audio id="passthrough" autoplay></audio>
   <script src="offscreen.js"></script>
 </body>
 </html>

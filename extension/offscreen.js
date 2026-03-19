@@ -16,6 +16,7 @@ const SERVER_URL = 'ws://localhost:8765/asr';
 let _audioCtx = null;
 let _workletNode = null;
 let _stream = null;
+let _micStream = null;
 let _ws = null;
 let _lang = 'ru';
 let _isRunning = false;
@@ -82,11 +83,31 @@ async function _initPipeline(stream) {
     }
   };
 
-  const source = _audioCtx.createMediaStreamSource(stream);
-  source.connect(_workletNode);
-  // Note: tabCapture.getMediaStreamId (MV3) does not mute the source tab.
-  // Do NOT connect to ctx.destination — offscreen docs have no audio output device
-  // and doing so suspends the AudioContext on some Chrome versions.
+  // Tab audio → worklet
+  const tabSource = _audioCtx.createMediaStreamSource(stream);
+  tabSource.connect(_workletNode);
+
+  // Microphone → worklet (non-blocking — added after pipeline is live)
+  // Do not await: mic permission prompt must not delay tab pipeline start.
+  navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    video: false,
+  }).then(micStream => {
+    _micStream = micStream;
+    const micSource = _audioCtx.createMediaStreamSource(micStream);
+    micSource.connect(_workletNode);
+    console.log('[TMF offscreen] Microphone connected');
+  }).catch(err => {
+    console.warn('[TMF offscreen] Mic unavailable:', err.message);
+  });
+
+  // Passthrough: play tab stream back to speakers so the user can still hear the tab.
+  // We use an <audio> element (not ctx.destination) — connecting to ctx.destination
+  // suspends the AudioContext in offscreen documents on some Chrome versions.
+  const passthrough = document.getElementById('passthrough');
+  if (passthrough) {
+    passthrough.srcObject = stream;
+  }
 
   _initWebSocket();
   _isRunning = true;
@@ -175,6 +196,10 @@ function _cleanup() {
   if (_stream) {
     _stream.getTracks().forEach(t => t.stop());
     _stream = null;
+  }
+  if (_micStream) {
+    _micStream.getTracks().forEach(t => t.stop());
+    _micStream = null;
   }
   if (_ws) {
     if (_ws.readyState === WebSocket.OPEN) _ws.close();

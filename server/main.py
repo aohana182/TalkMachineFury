@@ -60,7 +60,7 @@ def _load_config() -> dict:
             return tomllib.load(f)
     logger.warning("config.toml not found or tomllib unavailable — using defaults")
     return {
-        "vad": {"threshold": 0.40, "min_silence_ms": 450},
+        "vad": {"threshold": 0.40, "min_silence_ms": 450, "max_speech_s": 10.0},
         "inference": {"intra_op_num_threads": 2},
         "models": {"russian": "gigaam_v3"},
         "server": {"host": "localhost", "port": 8765, "queue_maxsize": 200},
@@ -160,6 +160,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     vad = VADSession(
         threshold=CONFIG.get("vad", {}).get("threshold", 0.40),
         min_silence_ms=CONFIG.get("vad", {}).get("min_silence_ms", 450),
+        max_speech_s=CONFIG.get("vad", {}).get("max_speech_s", 10.0),
         sess=_CACHED_SESS,
     )
     model = model_for_lang(lang)
@@ -191,7 +192,11 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                 # Flush any pending speech before closing
                 if vad.has_pending_speech:
                     audio = vad.flush()
+                    rms = float(np.sqrt(np.mean(audio ** 2)))
+                    dur = len(audio) / 16000
+                    logger.info("Final flush: %.2fs, RMS=%.4f", dur, rms)
                     text = await loop.run_in_executor(_executor, model.transcribe, audio)
+                    logger.info("Transcribed (final): %d chars", len(text))
                     session.append(text)
                     await ws.send_json(session.to_dict())
 
@@ -213,7 +218,11 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
             if vad.should_flush():
                 audio = vad.flush()
                 if len(audio) > 0:
+                    rms = float(np.sqrt(np.mean(audio ** 2)))
+                    dur = len(audio) / 16000
+                    logger.info("VAD flush: %.2fs, RMS=%.4f", dur, rms)
                     text = await loop.run_in_executor(_executor, model.transcribe, audio)
+                    logger.info("Transcribed: %d chars", len(text))
                     session.append(text)
                     if session.line_count > 0:
                         await ws.send_json(session.to_dict())
