@@ -84,7 +84,9 @@ async function _initPipeline(stream) {
 
   const source = _audioCtx.createMediaStreamSource(stream);
   source.connect(_workletNode);
-  source.connect(_audioCtx.destination); // passthrough — audio still plays to speakers
+  // Note: tabCapture.getMediaStreamId (MV3) does not mute the source tab.
+  // Do NOT connect to ctx.destination — offscreen docs have no audio output device
+  // and doing so suspends the AudioContext on some Chrome versions.
 
   _initWebSocket();
   _isRunning = true;
