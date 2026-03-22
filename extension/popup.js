@@ -145,16 +145,6 @@ btnStart.addEventListener('click', async () => {
     return;
   }
 
-  // Request mic here — popup click is a real user gesture so Brave/Chrome shows the dialog.
-  // We just prime the permission and release the stream; the offscreen doc will re-acquire it.
-  try {
-    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    micStream.getTracks().forEach(t => t.stop());
-  } catch (e) {
-    console.warn('[TMF popup] Mic permission denied or unavailable:', e.message);
-    // Non-fatal — tab audio still works without mic
-  }
-
   const lang = langSelect.value;
   const response = await chrome.runtime.sendMessage({ type: 'start-capture', lang });
   if (response?.ok) {

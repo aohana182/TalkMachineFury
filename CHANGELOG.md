@@ -2,6 +2,53 @@
 
 ---
 
+## [0.3.2] — 2026-03-22
+
+### Microphone capture — fully fixed
+
+#### Problem 1: mic permission silently denied in offscreen document
+
+**Broken behaviour:** `getUserMedia` for microphone inside `offscreen.js` returned `"Permission dismissed"` immediately — no dialog, no error the user could act on. The mic never connected.
+
+**Root cause:** Brave (and Chrome) silently auto-dismiss permission requests from offscreen documents. Offscreen docs have no visible UI, so the browser treats them as untrusted for permission prompts regardless of what the user has previously granted.
+
+**What we tried that didn't work:**
+- `mic-permission.html`: a 1×1 invisible popup opened by `background.js` to "prime" the permission. Brave showed an invisible dialog, auto-dismissed it as `"Permission dismissed"`, and that dismissal **revoked** the extension's mic permission — killing the offscreen track 200ms after it connected.
+- Requesting mic in `popup.js` on the Start click: worked once to show the dialog, but the popup closes when the user clicks away (returning to their meeting). Brave then treated the subsequent offscreen `getUserMedia` as a new request and denied it.
+- `mic-capture.html` opened as a 220×50 visible window: no dialog appeared because the window opened in the background where the user couldn't see or interact with it.
+
+**Fix:** Inject `mic-content.js` as a content script into the active meeting tab via `chrome.scripting.executeScript`. The meeting tab (Telemost, Zoom, Teams, Meet) already has microphone permission — the content script inherits it, so `getUserMedia` succeeds silently with no dialog. The `scripting` permission added to `manifest.json`.
+
+#### Problem 2: mic PCM frames lost in transit
+
+**Broken behaviour:** After the content script was wired up, every other PCM frame logged as `undefined bytes` and the server crashed with `Server error: 'bytes'`.
+
+**Root cause:** `chrome.runtime.sendMessage` serialises its payload as JSON. `ArrayBuffer` is not JSON-serialisable — it becomes `undefined` on the receiving end. The offscreen doc then called `_ws.send(undefined)`, which sent garbage to the Python server.
+
+**Fix:** `mic-content.js` converts the worklet's `ArrayBuffer` to `Array.from(new Int16Array(data))` before sending. `offscreen.js` converts back with `new Int16Array(msg.samples).buffer` before forwarding to the WebSocket.
+
+#### Problem 3: Start failed with "Extension has not been invoked for the current page"
+
+**Broken behaviour:** After adding `ensureMicCapture()`, clicking Start produced a tab-capture error immediately.
+
+**Root cause:** `ensureMicCapture()` opened a new window before `chrome.tabs.query` ran. The new window became the active window, so the query returned the mic-capture window (a `chrome-extension://` URL) instead of the meeting tab. `tabCapture.getMediaStreamId` cannot capture extension pages.
+
+**Fix:** `chrome.tabs.query` is now called at the very start of `handleStart()`, before any window or offscreen document is created.
+
+### Auto-write transcript to file
+
+**Problem:** Transcript was only saved when the user explicitly clicked Save. If the session ended without clicking Save, all text was lost.
+
+**Fix:** `server/main.py` creates a timestamped file (`C:/Transcripts/YYYY-MM-DD_HH-MM-SS_<lang>.txt`) at session start and appends each transcribed line immediately after recognition.
+
+### Server restart fix (`start.bat`)
+
+**Problem:** Running `uvicorn` after a previous session produced `[WinError 10048] only one usage of each socket address` because the prior Python process was still alive after the terminal was closed.
+
+**Fix:** `start.bat` kills any process bound to port 8765 before launching, so stale instances never block a fresh start.
+
+---
+
 ## [0.3.0] — 2026-03-19
 
 ### Save transcripts to disk

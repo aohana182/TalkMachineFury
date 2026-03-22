@@ -79,30 +79,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-async function ensureMicPermission() {
-  // Open a visible window to trigger the mic permission dialog.
-  // Offscreen documents cannot show permission prompts — this primes the grant.
-  // The window closes itself after getUserMedia resolves or rejects.
+async function ensureMicCapture(tabId) {
+  // Inject mic-content.js into the meeting tab.
+  // The tab already has mic permission (it's a meeting app) so no dialog appears.
+  // This avoids the offscreen-document permission block in Brave and the UX
+  // problem of an extra popup window.
   return new Promise((resolve) => {
-    chrome.windows.create({
-      url: chrome.runtime.getURL('mic-permission.html'),
-      type: 'popup',
-      width: 1,
-      height: 1,
-      left: -10,
-      top: -10,
-      focused: false,
-    }, (win) => {
-      const checkClosed = setInterval(() => {
-        chrome.windows.get(win.id, (w) => {
-          if (chrome.runtime.lastError || !w) {
-            clearInterval(checkClosed);
+    chrome.scripting.executeScript(
+      { target: { tabId }, files: ['mic-content.js'] },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.warn('[TMF] mic inject failed:', chrome.runtime.lastError.message);
+          resolve(); // non-fatal — tab audio still works
+          return;
+        }
+        // Wait for mic-ready / mic-error from the injected script.
+        const listener = (msg) => {
+          if (msg.type === 'mic-ready' || msg.type === 'mic-error') {
+            chrome.runtime.onMessage.removeListener(listener);
             resolve();
           }
-        });
-      }, 200);
-    });
+        };
+        chrome.runtime.onMessage.addListener(listener);
+        // Safety timeout — resolve after 3s even if no response.
+        setTimeout(() => { chrome.runtime.onMessage.removeListener(listener); resolve(); }, 3000);
+      }
+    );
   });
+}
+
+function closeMicCapture() {
+  chrome.runtime.sendMessage({ type: 'release-mic' }).catch(() => {});
 }
 
 async function ensureServer() {
@@ -129,13 +136,16 @@ async function handleStart(msg) {
   const { lang } = msg;
 
   await chrome.storage.session.set({ tmf_state: 'connecting', tmf_lang: lang });
-  await ensureServer();
-  await ensureMicPermission();
-  await ensureOffscreen();
 
-  // Get streamId for the active tab
+  // Capture the target tab BEFORE opening the mic window — ensureMicCapture() opens
+  // a new window which becomes the active window, making the tab query return the
+  // wrong tab and causing "Extension has not been invoked for the current page".
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw new Error('No active tab');
+
+  await ensureServer();
+  await ensureMicCapture(tab.id);  // injects into meeting tab, waits for mic-ready
+  await ensureOffscreen();
 
   await chrome.storage.session.set({ tmf_tab_title: tab.title || 'meeting' });
 
@@ -173,5 +183,6 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'ready-to-stop') {
     chrome.storage.session.set({ tmf_state: 'idle' });
     closeOffscreen().catch(() => {});
+    closeMicCapture();
   }
 });

@@ -16,7 +16,6 @@ const SERVER_URL = 'ws://localhost:8765/asr';
 let _audioCtx = null;
 let _workletNode = null;
 let _stream = null;
-let _micStream = null;
 let _ws = null;
 let _lang = 'ru';
 let _isRunning = false;
@@ -87,19 +86,8 @@ async function _initPipeline(stream) {
   const tabSource = _audioCtx.createMediaStreamSource(stream);
   tabSource.connect(_workletNode);
 
-  // Microphone → worklet (non-blocking — added after pipeline is live)
-  // Do not await: mic permission prompt must not delay tab pipeline start.
-  navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-    video: false,
-  }).then(micStream => {
-    _micStream = micStream;
-    const micSource = _audioCtx.createMediaStreamSource(micStream);
-    micSource.connect(_workletNode);
-    console.log('[TMF offscreen] Microphone connected');
-  }).catch(err => {
-    console.warn('[TMF offscreen] Mic unavailable:', err.message);
-  });
+  // Mic PCM arrives via chrome.runtime messages from mic-capture.html (see bottom of file).
+  // mic-capture.html is a visible window that holds the mic stream for the session.
 
   // Passthrough: play tab stream back to speakers so the user can still hear the tab.
   // We use an <audio> element (not ctx.destination) — connecting to ctx.destination
@@ -112,6 +100,20 @@ async function _initPipeline(stream) {
   _initWebSocket();
   _isRunning = true;
 }
+
+// ---------------------------------------------------------------------------
+// Mic PCM relay — frames arrive from mic-capture.html via extension messages
+// ---------------------------------------------------------------------------
+
+// mic-capture.html is a visible window that owns the mic stream (Brave denies
+// getUserMedia in offscreen documents). It sends each PCM frame here, and we
+// forward it over the same WebSocket as tab audio.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === 'mic-pcm' && _isRunning) {
+    // Convert Int16 array back to ArrayBuffer (sent as Array to survive JSON serialization).
+    _sendFrame(new Int16Array(msg.samples).buffer);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // WebSocket
@@ -197,10 +199,7 @@ function _cleanup() {
     _stream.getTracks().forEach(t => t.stop());
     _stream = null;
   }
-  if (_micStream) {
-    _micStream.getTracks().forEach(t => t.stop());
-    _micStream = null;
-  }
+  // Mic stream is owned by mic-capture.html — released by background.js on stop.
   if (_ws) {
     if (_ws.readyState === WebSocket.OPEN) _ws.close();
     _ws = null;
