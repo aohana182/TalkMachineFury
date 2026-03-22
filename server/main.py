@@ -18,6 +18,7 @@ Run:
   uvicorn server.main:app --port 8765 --reload
 """
 import asyncio
+import datetime
 import logging
 import pathlib
 import sys
@@ -156,6 +157,14 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     queue: asyncio.Queue[Optional[bytes]] = asyncio.Queue(maxsize=queue_maxsize)
     session = TranscriptSession(lang=lang)
 
+    # Open transcript file for this session
+    transcript_folder = pathlib.Path(CONFIG.get("server", {}).get("transcript_folder", "C:/Transcripts"))
+    transcript_folder.mkdir(parents=True, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    transcript_file = transcript_folder / f"{ts}_{lang}.txt"
+    transcript_file.touch()
+    logger.info("Writing transcript to %s", transcript_file)
+
     # VAD init: must use cached session — never block the event loop here
     from server.vad import _CACHED_SESS
     if _CACHED_SESS is None:
@@ -204,6 +213,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                     text = await loop.run_in_executor(_executor, model.transcribe, audio)
                     logger.info("Transcribed (final): %d chars", len(text))
                     session.append(text)
+                    transcript_file.open("a", encoding="utf-8").write(text + "\n")
                     await ws.send_json(session.to_dict())
 
                 _session_discard_rates.append(vad.discard_rate)
@@ -230,6 +240,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                     text = await loop.run_in_executor(_executor, model.transcribe, audio)
                     logger.info("Transcribed: %d chars", len(text))
                     session.append(text)
+                    transcript_file.open("a", encoding="utf-8").write(text + "\n")
                     if session.line_count > 0:
                         await ws.send_json(session.to_dict())
 
