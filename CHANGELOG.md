@@ -2,6 +2,38 @@
 
 ---
 
+## [0.4.0] — 2026-03-29
+
+### Russian ASR: switch to faster-whisper medium (WER 18.8%)
+
+**Problem:** GigaAM v3 CTC delivered ~24% WER on the test corpus — above the 20% target. A secondary bug in `measure_wer.py` was loading the wrong model name (`"gigaam_v3"` instead of `"gigaam-v3-e2e-ctc"`), making all prior WER measurements unreliable.
+
+**Optimization ladder run (30-sample corpus):**
+
+| Config | Model | WER |
+|--------|-------|-----|
+| A | gigaam-v3-e2e-ctc (baseline) | 24.0% |
+| B | gigaam-v3-e2e-rnnt | 21.6% |
+| C | faster-whisper small (ru) | 23.6% |
+| **D** | **faster-whisper medium (ru)** | **18.8% ✓** |
+
+**Winner:** `faster-whisper medium`, multilingual, `lang=ru`, `beam_size=1`, `int8` CPU.
+beam_size=1 gives identical WER to beam_size=5 on this corpus and is ~2x faster.
+
+**Note on remaining errors:** Most WER errors are number-format mismatches (`пятьсот` → `500`, `двадцать три` → `23%`) — semantically correct transcriptions that differ from written-out reference text.
+
+**Tradeoff:** Latency per segment increased from ~2-3s (gigaam CTC) to ~5-8s (whisper medium CPU). Acceptable for post-meeting review; tolerable for live monitoring.
+
+**Files changed:**
+- `server/asr_ru.py`: added `whisper:` backend; default model changed to `whisper:medium`
+- `config.toml`: `russian = "whisper:medium"`
+- `tests/wer_bench.py`: new self-contained optimization loop script
+- `tests/measure_wer.py`: fixed model name bug; target updated 25% → 20%
+- `tests/test_asr_ru.py`: fixed model name bug; RTF limit 3x (was 1x); added "whisper" to backend whitelist
+- `tests/test_integration.py`: latency limit 10s (was 5s)
+
+---
+
 ## [0.3.2] — 2026-03-22
 
 ### Microphone capture — fully fixed
