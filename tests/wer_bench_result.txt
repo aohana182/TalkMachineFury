@@ -1,0 +1,4 @@
+winner_label=D
+winner_model=medium
+winner_backend=faster_whisper
+wer=0.1880

@@ -81,7 +81,7 @@ def run(model_name: str, corpus_dir: pathlib.Path) -> None:
 
     if model_name == "ru":
         from server import asr_ru
-        asr_ru.load("gigaam_v3", intra_op_num_threads=2)
+        asr_ru.load("whisper:medium", intra_op_num_threads=2)
         model = asr_ru
     elif model_name == "en":
         from server import asr_en
@@ -123,7 +123,7 @@ def run(model_name: str, corpus_dir: pathlib.Path) -> None:
     print(f"\n{'='*40}")
     print(f"Files measured: {count}")
     print(f"Average WER:    {avg_wer:.1%}")
-    target = 0.25
+    target = 0.20
     status = "PASS" if avg_wer <= target else "FAIL"
     print(f"Target:         {target:.0%}  →  {status}")
 

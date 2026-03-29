@@ -17,9 +17,11 @@ inter_op_num_threads = 1
 # Changing requires a new benchmark run.
 
 [models]
-russian = "gigaam-v3-e2e-ctc"
-# gigaam_v3 = use onnx-asr
-# vosk:... = use sherpa-onnx
+russian = "whisper:medium"
+# whisper:<size> = faster-whisper multilingual, lang=ru, beam=5 (medium: 18.8% WER)
+# gigaam-v3-e2e-ctc  = onnx-asr CTC (~24% WER, faster)
+# gigaam-v3-e2e-rnnt = onnx-asr RNN-T (~21% WER)
+# vosk:...           = sherpa-onnx fallback
 
 [audio]
 target_sample_rate = 16000

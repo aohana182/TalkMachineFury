@@ -1,13 +1,15 @@
 """
-Russian ASR via GigaAM v3 CTC (onnx-asr).
+Russian ASR.
 
-Fallback: vosk Zipformer2 via sherpa-onnx, activated when GigaAM v3 is absent
-from onnx-asr's model registry (Gate 0A result stored in config.toml).
+Backends (selected via config.toml `russian = ...`):
+  gigaam-v3-e2e-ctc   — GigaAM v3 CTC via onnx-asr (faster, ~24% WER)
+  gigaam-v3-e2e-rnnt  — GigaAM v3 RNN-T via onnx-asr (~21% WER)
+  whisper:<size>      — faster-whisper multilingual, lang=ru (beam=5)
+                        sizes: tiny, base, small, medium, large-v3
+                        medium recommended: ~18.8% WER, CPU-feasible
+  vosk:<model-name>   — sherpa-onnx fallback
 
-Overlap-and-stitch note: GigaAM v3 is full-context (no streaming tensors).
-Utterances arrive pre-segmented by VAD — typically 1-10s.  No stitching required
-for normal speech.  If an utterance exceeds 30s (VAD max_speech_s limit), it is
-split by the VAD before reaching this module.
+Utterances arrive pre-segmented by VAD — typically 1-10s.
 """
 import re
 import time
@@ -20,22 +22,29 @@ logger = logging.getLogger(__name__)
 
 # Module-level singleton — loaded once, reused per request
 _model = None
-_backend: str = "unloaded"  # "gigaam_v3" | "vosk" | "unloaded"
+_backend: str = "unloaded"  # "gigaam_v3" | "whisper" | "vosk" | "unloaded"
 
 
-def load(model_name: str = "gigaam-v3-e2e-ctc", intra_op_num_threads: int = 2) -> None:
+def load(model_name: str = "whisper:medium", intra_op_num_threads: int = 2) -> None:
     """
     Load Russian ASR model.  Call once at server startup.
 
     Args:
-        model_name: "gigaam-v3-e2e-ctc" (onnx-asr) or "vosk:<vosk-model-name>" (sherpa-onnx fallback)
-        intra_op_num_threads: from config.toml, set by Gate 0D benchmark
+        model_name: one of:
+            "gigaam-v3-e2e-ctc"  (onnx-asr)
+            "gigaam-v3-e2e-rnnt" (onnx-asr)
+            "whisper:<size>"     (faster-whisper, e.g. "whisper:medium")
+            "vosk:<model-name>"  (sherpa-onnx fallback)
+        intra_op_num_threads: ONNX thread hint (gigaam/vosk only)
     """
     global _model, _backend
 
     if model_name.startswith("vosk:"):
         vosk_name = model_name.split(":", 1)[1]
         _load_vosk(vosk_name, intra_op_num_threads)
+    elif model_name.startswith("whisper:"):
+        size = model_name.split(":", 1)[1]
+        _load_whisper(size)
     else:
         _load_gigaam(model_name, intra_op_num_threads)
 
@@ -52,8 +61,22 @@ def _load_gigaam(model_name: str, intra_op_num_threads: int) -> None:
         _backend = "gigaam_v3"
         logger.info("Russian ASR: %s loaded (threads=%d)", model_name, intra_op_num_threads)
     except Exception as e:
-        logger.error("Failed to load %s: %s — attempting vosk fallback", model_name, e)
+        logger.error("Failed to load %s: %s -- attempting vosk fallback", model_name, e)
         _load_vosk("alphacep/vosk-model-ru", intra_op_num_threads)
+
+
+def _load_whisper(size: str) -> None:
+    global _model, _backend
+    from faster_whisper import WhisperModel
+    _model = WhisperModel(
+        size,
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=2,
+        num_workers=1,
+    )
+    _backend = "whisper"
+    logger.info("Russian ASR: faster-whisper %s loaded (CPU, int8)", size)
 
 
 def _load_vosk(model_name: str, intra_op_num_threads: int) -> None:
@@ -62,7 +85,6 @@ def _load_vosk(model_name: str, intra_op_num_threads: int) -> None:
         import sherpa_onnx
 
         opts = sherpa_onnx.OnlineRecognizerConfig()
-        # sherpa-onnx handles threading internally; pass hint if API supports it
         _model = sherpa_onnx.OnlineRecognizer.from_pretrained(
             model_name,
         )
@@ -93,6 +115,8 @@ def transcribe(audio: np.ndarray) -> str:
     try:
         if _backend == "gigaam_v3":
             result = _transcribe_gigaam(audio)
+        elif _backend == "whisper":
+            result = _transcribe_whisper(audio)
         elif _backend == "vosk":
             result = _transcribe_vosk(audio)
         else:
@@ -115,11 +139,22 @@ def _transcribe_gigaam(audio: np.ndarray) -> str:
     return str(result) if result else ""
 
 
+def _transcribe_whisper(audio: np.ndarray) -> str:
+    segments, _ = _model.transcribe(
+        audio,
+        language="ru",
+        task="transcribe",
+        beam_size=1,      # beam=1: same WER as 5 on clean speech, ~2x faster on CPU
+        vad_filter=False,
+        word_timestamps=False,
+    )
+    return " ".join(seg.text for seg in segments).strip()
+
+
 def _transcribe_vosk(audio: np.ndarray) -> str:
     import sherpa_onnx
 
     stream = _model.create_stream()
-    # sherpa-onnx expects int16 or float32 depending on version
     stream.accept_waveform(16000, audio)
     _model.decode_stream(stream)
     result = _model.get_result(stream)

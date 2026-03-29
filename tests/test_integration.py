@@ -84,7 +84,9 @@ class TestEndToEnd:
         assert first_transcript_at is not None, "No transcript received"
         # Wall-clock delay after last audio frame
         delay = first_transcript_at - last_audio_at
-        assert delay < 5.0, f"First transcript took {delay:.1f}s — too slow"
+        # whisper:medium CPU beam=1: ~1x RTF on 10s segments → ~10s latency max.
+        # If this flaps, check that config.toml uses whisper:medium with beam_size=1.
+        assert delay < 10.0, f"First transcript took {delay:.1f}s — too slow"
 
     def test_discard_rate_below_threshold(self, client, ru_wav_bytes):
         """VAD discard_rate must stay below 5% on clean speech."""
