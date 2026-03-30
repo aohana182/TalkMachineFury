@@ -213,7 +213,8 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                     text = await loop.run_in_executor(_executor, model.transcribe, audio)
                     logger.info("Transcribed (final): %d chars", len(text))
                     session.append(text)
-                    transcript_file.open("a", encoding="utf-8").write(text + "\n")
+                    ts_str = datetime.datetime.now().strftime("%H:%M:%S")
+                    transcript_file.open("a", encoding="utf-8").write(f"[{ts_str}] {text}\n")
                     await ws.send_json(session.to_dict())
 
                 _session_discard_rates.append(vad.discard_rate)
@@ -240,7 +241,8 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                     text = await loop.run_in_executor(_executor, model.transcribe, audio)
                     logger.info("Transcribed: %d chars", len(text))
                     session.append(text)
-                    transcript_file.open("a", encoding="utf-8").write(text + "\n")
+                    ts_str = datetime.datetime.now().strftime("%H:%M:%S")
+                    transcript_file.open("a", encoding="utf-8").write(f"[{ts_str}] {text}\n")
                     if session.line_count > 0:
                         await ws.send_json(session.to_dict())
 

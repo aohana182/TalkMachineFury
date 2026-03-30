@@ -94,13 +94,18 @@ function render() {
   renderTranscript();
 }
 
+function formatTs(unixSec) {
+  const d = new Date(unixSec * 1000);
+  return d.toTimeString().slice(0, 8); // HH:MM:SS local time
+}
+
 function renderTranscript() {
   if (_transcript.length === 0) {
     transcript.innerHTML = '<div class="placeholder">Transcript will appear here.</div>';
     return;
   }
   transcript.innerHTML = _transcript
-    .map(l => `<div class="line">${escapeHtml(l.text)}</div>`)
+    .map(l => `<div class="line"><span class="ts">${formatTs(l.ts)}</span>${escapeHtml(l.text)}</div>`)
     .join('');
 
   if (_autoScroll) {
@@ -163,7 +168,7 @@ btnStop.addEventListener('click', async () => {
 });
 
 btnSave.addEventListener('click', async () => {
-  const text = _transcript.map(l => l.text).join('\n');
+  const text = _transcript.map(l => `[${formatTs(l.ts)}] ${l.text}`).join('\n');
 
   // Build filename: YYYY-MM-DD_HH-MM_<tab-title>_<lang>.txt
   const { tmf_tab_title, tmf_lang } = await chrome.storage.session.get(['tmf_tab_title', 'tmf_lang']);
