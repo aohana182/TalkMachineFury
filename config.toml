@@ -4,11 +4,15 @@
 
 [vad]
 threshold = 0.40
-min_silence_ms = 450
-max_speech_s = 10.0
+min_silence_ms = 1000
+min_speech_ms = 500
+max_speech_s = 25.0
 # threshold=0.40: FNR (dropped speech) costs more than FPR (noise transcribed)
-# Changing threshold requires a counted measurement, not a judgment call.
-# max_speech_s=10: limits segment length to keep ASR latency under ~2s.
+# min_silence_ms=1000: Russian meeting speech has natural pauses ~0.5-1s mid-sentence;
+#   450ms was cutting mid-phrase. 1000ms waits for a real sentence boundary.
+# min_speech_ms=500: segments shorter than 0.5s are skipped — whisper hallucinates
+#   on sub-second clips (produces "Да.", "Ну.", fused words at boundaries).
+# max_speech_s=25: longer segments give whisper more context → better accuracy.
 
 [inference]
 intra_op_num_threads = 2

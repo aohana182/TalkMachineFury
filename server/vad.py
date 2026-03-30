@@ -55,12 +55,14 @@ class VADSession:
     def __init__(
         self,
         threshold: float = 0.40,
-        min_silence_ms: int = 450,
-        max_speech_s: float = 30.0,
+        min_silence_ms: int = 1000,
+        min_speech_ms: int = 500,
+        max_speech_s: float = 25.0,
         sess: rt.InferenceSession | None = None,
     ):
         self.threshold = threshold
         self._min_silence_frames = int(min_silence_ms / 1000 * self.SAMPLE_RATE / HOP_SIZE)
+        self._min_speech_samples = int(min_speech_ms / 1000 * self.SAMPLE_RATE)
         self._max_speech_samples = int(max_speech_s * self.SAMPLE_RATE)
 
         self._sess = sess if sess is not None else _load_silero()
@@ -127,6 +129,11 @@ class VADSession:
         silence_threshold_reached = self._silence_frames >= self._min_silence_frames
         length_limit_reached = self._speech_samples >= self._max_speech_samples
         return silence_threshold_reached or length_limit_reached
+
+    @property
+    def speech_duration_s(self) -> float:
+        """Duration of accumulated speech in seconds."""
+        return self._speech_samples / self.SAMPLE_RATE
 
     def flush(self) -> np.ndarray:
         """

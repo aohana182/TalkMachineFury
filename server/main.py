@@ -174,12 +174,15 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
         return
     vad = VADSession(
         threshold=CONFIG.get("vad", {}).get("threshold", 0.40),
-        min_silence_ms=CONFIG.get("vad", {}).get("min_silence_ms", 450),
-        max_speech_s=CONFIG.get("vad", {}).get("max_speech_s", 10.0),
+        min_silence_ms=CONFIG.get("vad", {}).get("min_silence_ms", 1000),
+        min_speech_ms=CONFIG.get("vad", {}).get("min_speech_ms", 500),
+        max_speech_s=CONFIG.get("vad", {}).get("max_speech_s", 25.0),
         sess=_CACHED_SESS,
     )
     model = model_for_lang(lang)
+    min_speech_samples = int(CONFIG.get("vad", {}).get("min_speech_ms", 500) / 1000 * 16000)
     loop = asyncio.get_running_loop()
+    _prev_text: list[str] = []  # last N transcribed lines for whisper context
     logger.info("Session ready — entering receive/process loop")
 
     async def receiver():
@@ -207,15 +210,21 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                 # Flush any pending speech before closing
                 if vad.has_pending_speech:
                     audio = vad.flush()
-                    rms = float(np.sqrt(np.mean(audio ** 2)))
                     dur = len(audio) / 16000
-                    logger.info("Final flush: %.2fs, RMS=%.4f", dur, rms)
-                    text = await loop.run_in_executor(_executor, model.transcribe, audio)
-                    logger.info("Transcribed (final): %d chars", len(text))
-                    session.append(text)
-                    ts_str = datetime.datetime.now().strftime("%H:%M:%S")
-                    transcript_file.open("a", encoding="utf-8").write(f"[{ts_str}] {text}\n")
-                    await ws.send_json(session.to_dict())
+                    if len(audio) >= min_speech_samples:
+                        rms = float(np.sqrt(np.mean(audio ** 2)))
+                        logger.info("Final flush: %.2fs, RMS=%.4f", dur, rms)
+                        prev = " ".join(_prev_text[-2:])
+                        text = await loop.run_in_executor(_executor, model.transcribe, audio, prev)
+                        logger.info("Transcribed (final): %d chars", len(text))
+                        if text:
+                            _prev_text.append(text)
+                            session.append(text)
+                            ts_str = datetime.datetime.now().strftime("%H:%M:%S")
+                            transcript_file.open("a", encoding="utf-8").write(f"[{ts_str}] {text}\n")
+                            await ws.send_json(session.to_dict())
+                    else:
+                        logger.debug("Final flush skipped: %.2fs < min_speech", dur)
 
                 _session_discard_rates.append(vad.discard_rate)
                 logger.info(
@@ -234,12 +243,17 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
 
             if vad.should_flush():
                 audio = vad.flush()
-                if len(audio) > 0:
-                    rms = float(np.sqrt(np.mean(audio ** 2)))
-                    dur = len(audio) / 16000
-                    logger.info("VAD flush: %.2fs, RMS=%.4f", dur, rms)
-                    text = await loop.run_in_executor(_executor, model.transcribe, audio)
-                    logger.info("Transcribed: %d chars", len(text))
+                dur = len(audio) / 16000
+                if len(audio) < min_speech_samples:
+                    logger.debug("VAD flush skipped: %.2fs < min_speech", dur)
+                    continue
+                rms = float(np.sqrt(np.mean(audio ** 2)))
+                logger.info("VAD flush: %.2fs, RMS=%.4f", dur, rms)
+                prev = " ".join(_prev_text[-2:])
+                text = await loop.run_in_executor(_executor, model.transcribe, audio, prev)
+                logger.info("Transcribed: %d chars", len(text))
+                if text:
+                    _prev_text.append(text)
                     session.append(text)
                     ts_str = datetime.datetime.now().strftime("%H:%M:%S")
                     transcript_file.open("a", encoding="utf-8").write(f"[{ts_str}] {text}\n")
