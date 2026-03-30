@@ -62,6 +62,21 @@ getUserMedia-first, cumulative lines[] protocol.
 6. Run `pytest tests/ -v -m integration` after models downloaded
 7. Commit with tag v0.1.0 after all integration tests pass
 
+### 2026-03-30 — Speaker diarization (parked)
+
+**Decision:** Add speaker identification to transcript lines (the `speaker` field is already in the protocol, always `0` now).
+
+**Approach decided:** Post-hoc diarization — after Stop is clicked, re-run diarization on the accumulated audio, assign speaker labels to existing transcript lines, redisplay. Real-time per-segment diarization was considered and rejected: it mislabels speakers early in the session before enough audio exists to cluster reliably.
+
+**Open questions before implementation:**
+- Library choice: pyannote.audio (best quality, needs HF token + license), speechbrain, or wespeaker embedding + agglomerative clustering (lightest, CPU-viable)
+- UI: how to show speaker labels in the popup (color-coded? "Speaker 1 / Speaker 2"?)
+- File format: does the on-disk transcript get re-written with speaker labels after diarization, or is it a separate file?
+
+**Next step:** Pick library, implement post-hoc diarization endpoint (`POST /diarize`), update popup to trigger it on Stop and re-render lines with speaker labels.
+
+---
+
 **Known issues to watch:**
 - worklet.js lerp downsampler: fracPos tracking at non-integer ratios (44100→16000 = 2.75625x) — verify no drift over long sessions
 - offscreen.js: `clients?.matchAll?.()` guard for hasOffscreen() fallback — test on Chrome 116
