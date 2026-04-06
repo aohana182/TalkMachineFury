@@ -46,11 +46,12 @@ if errorlevel 1 (
 )
 echo [OK] Python dependencies installed
 
-:: Pre-download models (runs at server startup anyway, but nice to do upfront)
-echo Pre-downloading models ^(~400MB, one-time^)...
-python -c "import onnx_asr; onnx_asr.load_vad('silero'); print('[OK] Silero VAD')"
-python -c "import onnx_asr; onnx_asr.load_model('gigaam-v3-e2e-ctc'); print('[OK] GigaAM v3')"
-python -c "from faster_whisper import WhisperModel; WhisperModel('Systran/faster-distil-whisper-small.en', compute_type='int8'); print('[OK] distil-whisper')"
+:: Pre-download models (runs at server startup anyway, but avoids silent first-run delay)
+:: whisper:medium is ~1.4GB — takes 5-10 min on first download depending on connection
+echo Pre-downloading models ^(~1.6GB total, one-time^)...
+.venv\Scripts\python.exe -c "import onnx_asr; onnx_asr.load_vad('silero'); print('[OK] Silero VAD')"
+.venv\Scripts\python.exe -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8'); print('[OK] whisper:medium (Russian)')"
+.venv\Scripts\python.exe -c "from faster_whisper import WhisperModel; WhisperModel('Systran/faster-distil-whisper-small.en', device='cpu', compute_type='int8'); print('[OK] distil-whisper-small.en (English)')"
 
 :: Create transcript folder
 if not exist "C:\Transcripts" (

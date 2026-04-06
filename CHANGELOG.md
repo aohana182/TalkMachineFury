@@ -2,6 +2,39 @@
 
 ---
 
+## [0.5.0] — 2026-04-06
+
+### Three-stage pipeline — no audio loss under ASR load
+
+**Problem:** In live calls, transcription silently stopped after the first segment and degraded to nothing ("getting worse every second").
+
+**Root cause:** `processor()` coupled VAD and ASR in a single coroutine. When Whisper blocked in `run_in_executor` (40-50s for a 25s segment), the coroutine stopped dequeuing frames. `frame_queue` (600 frames ≈ 19s of audio) saturated within the first Whisper call. Subsequent frames dropped. VAD never saw enough audio to form another segment. System went deaf.
+
+**Fix:** Split into three independent coroutines connected by two queues:
+```
+receiver() → frame_queue → vad_worker() → segment_queue → asr_worker()
+```
+- `vad_worker`: runs Silero VAD continuously (< 1ms/frame), never touches ASR
+- `asr_worker`: drains `segment_queue` sequentially — preserves order and `initial_prompt` context
+- `segment_queue` unbounded: lag grows gracefully instead of dropping audio
+- `ThreadPoolExecutor` reduced to `max_workers=1` — enforces sequential ASR, eliminates context race
+
+**New tests:**
+- `test_two_segments_produce_two_lines` — sends speech + 1.5s silence + speech, asserts ≥2 transcript lines received. Fails on old architecture.
+- `test_no_frame_loss_under_two_segments` — asserts zero backpressure events.
+
+**WER validated on real speech:** 30 samples from SOVA Russian conversational dataset (real mobile recordings, not TTS). **16.4% WER — passes <20% target.**
+
+**WER script fixed:** Prior 18.8% was inflated by digit/word formatting mismatch ("пятьсот" → "500"). Added `_normalize()` to convert digits to Russian words before comparison.
+
+**Setup fixes:**
+- `install.bat`: pre-downloads correct models (`whisper:medium` + `distil-small.en`), uses `.venv\Scripts\python.exe`
+- `start.bat`: venv-aware Python selection, falls back to system `python`
+
+**Files changed:** `server/main.py`, `tests/test_pipeline_multisegment.py`, `tests/measure_wer.py`, `install.bat`, `start.bat`, `extension/manifest.json`, `README.md`, `CHANGELOG.md`, `docs/known_limitations.md`
+
+---
+
 ## [0.4.0] — 2026-03-29
 
 ### Russian ASR: switch to faster-whisper medium (WER 18.8%)
@@ -161,5 +194,5 @@ beam_size=1 gives identical WER to beam_size=5 on this corpus and is ~2x faster.
 
 - High-load testing: 90-min continuous session, thermal throttling, memory leak check
 - Mic device picker (currently OS default)
-- Speaker diarization (post-v1)
-- Auto-start server (native messaging host)
+- Speaker diarization (post-v1, parked — approach documented in memory.md)
+- WER benchmark on actual meeting audio (SOVA corpus is conversational, not meeting-style)

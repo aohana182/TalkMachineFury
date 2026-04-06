@@ -46,3 +46,4 @@ desktop.ini
 # Logs
 *.log
 tests/wer_corpus_sova/
+host_manifest_registered.json
