@@ -45,3 +45,4 @@ desktop.ini
 
 # Logs
 *.log
+tests/wer_corpus_sova/

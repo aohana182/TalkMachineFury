@@ -1,29 +1,60 @@
 """
 WER measurement script.
 
-Target: WER < 25% on Russian meeting audio.
+Target: WER < 20% on Russian speech.
 
 Usage:
-    python tests/measure_wer.py --model ru --corpus tests/wer_corpus/
-    python tests/measure_wer.py --model en --corpus tests/wer_corpus/
+    python -X utf8 tests/measure_wer.py --model ru --corpus tests/wer_corpus_sova/
+    python -X utf8 tests/measure_wer.py --model ru --corpus tests/wer_corpus/
+    python -X utf8 tests/measure_wer.py --model en --corpus tests/wer_corpus/
 
-Corpus format (wer_corpus/):
+Corpus format:
     *.wav   — audio files (mono, 16kHz)
-    *.txt   — reference transcripts (same basename)
-
-Example:
-    wer_corpus/
-      meeting_01.wav
-      meeting_01.txt   (contains reference transcript)
+    *.txt   — reference transcripts (same basename, UTF-8)
 
 WER formula: (S + D + I) / N
   S = substitutions, D = deletions, I = insertions, N = reference word count
+
+Text is normalized before comparison:
+  - Lowercase
+  - Punctuation stripped
+  - Digits converted to Russian words (пятьсот instead of 500)
+  - Hyphens in compound words treated as spaces (во-первых → во первых)
+  - Repeated whitespace collapsed
 """
 import argparse
 import pathlib
+import re
+import sys
 import wave
 
 import numpy as np
+
+
+def _normalize(text: str) -> str:
+    """
+    Normalize text for WER comparison.
+    Converts digits to Russian words so Whisper's "500" matches ref "пятьсот".
+    """
+    try:
+        from num2words import num2words as n2w
+
+        def _replace_num(m: re.Match) -> str:
+            n = m.group(0).replace(",", "").replace(".", "")
+            try:
+                return n2w(int(n), lang="ru")
+            except Exception:
+                return n
+
+        text = re.sub(r"\b\d[\d,]*\b", _replace_num, text)
+    except ImportError:
+        pass  # fallback: no number normalization
+
+    text = text.lower()
+    text = re.sub(r"[^\w\s-]", " ", text, flags=re.UNICODE)  # strip punctuation
+    text = re.sub(r"-", " ", text)                             # hyphens → spaces
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 def _load_wav(path: pathlib.Path) -> np.ndarray:
@@ -67,8 +98,8 @@ def _edit_distance(ref: list[str], hyp: list[str]) -> tuple[int, int, int]:
 
 
 def compute_wer(ref_text: str, hyp_text: str) -> float:
-    ref = ref_text.lower().split()
-    hyp = hyp_text.lower().split()
+    ref = _normalize(ref_text).split()
+    hyp = _normalize(hyp_text).split()
     if not ref:
         return 0.0
     s, d, i = _edit_distance(ref, hyp)
@@ -111,9 +142,12 @@ def run(model_name: str, corpus_dir: pathlib.Path) -> None:
         wer = compute_wer(ref_text, hyp_text)
         total_wer += wer
         count += 1
-        print(f"  {wav_path.name}: WER={wer:.1%}")
-        print(f"    REF: {ref_text[:80]}")
-        print(f"    HYP: {hyp_text[:80]}")
+        ref_norm = _normalize(ref_text)
+        hyp_norm = _normalize(hyp_text)
+        status = "OK" if wer < 0.20 else "FAIL"
+        print(f"  {wav_path.name}: WER={wer:.1%} [{status}]")
+        print(f"    REF: {ref_norm[:90]}")
+        print(f"    HYP: {hyp_norm[:90]}")
 
     if count == 0:
         print("No files measured.")
