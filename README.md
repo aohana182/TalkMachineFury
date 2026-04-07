@@ -39,8 +39,9 @@ One-time only. The server starts automatically after this.
 1. Open a meeting tab (Zoom, Telemost, Google Meet)
 2. Click the Talk Machine Fury icon → select language → **Start**
 3. Grant mic permission when prompted (once, never again)
-4. Transcript appears in the popup as speech is detected
-5. **Stop** → transcript written to `C:\Transcripts\YYYY-MM-DD_HH-MM-SS_<lang>.txt`
+4. Server starts automatically in the background (first click may take ~15s)
+5. Transcript appears in the popup as speech is detected
+6. **Stop** → transcript written to `C:\Transcripts\YYYY-MM-DD_HH-MM-SS_<lang>.txt`
 
 Change the save folder in `config.toml` → `[server] transcript_folder`.
 

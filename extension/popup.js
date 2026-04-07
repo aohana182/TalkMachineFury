@@ -49,9 +49,9 @@ function render() {
 
   switch (_state) {
     case 'server-offline':
-      statusBar.textContent = 'Start the server first:  uvicorn server.main:app --port 8765';
+      statusBar.textContent = 'Server offline — click Start to launch automatically';
       statusBar.className = 'warning';
-      // Start disabled — user must fix server first
+      btnStart.disabled = false;  // Start triggers native host auto-launch
       break;
 
     case 'idle':
@@ -144,12 +144,10 @@ async function checkServer() {
 btnStart.addEventListener('click', async () => {
   setState('connecting');
 
-  const alive = await checkServer();
-  if (!alive) {
-    setState('server-offline');
-    return;
-  }
-
+  // Do NOT pre-check health here. background.js ensureServer() contacts the
+  // native host which starts the server and waits up to 30s for it to be ready.
+  // A pre-flight health check with a 1.5s timeout would race and lose against
+  // that 30s startup, re-blocking the UI before the server is up.
   const lang = langSelect.value;
   const response = await chrome.runtime.sendMessage({ type: 'start-capture', lang });
   if (response?.ok) {
