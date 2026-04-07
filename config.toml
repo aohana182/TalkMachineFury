@@ -31,6 +31,10 @@ russian = "whisper:medium"
 [audio]
 target_sample_rate = 16000
 hardware_sample_rate = 48000   # confirmed by Gate 0B on target machine
+gain = 2.0
+# gain: amplify tab audio before VAD and ASR. Tab capture arrives at ~0.05 RMS;
+# Silero VAD calibrated for ~0.10. 2x gain brings it into calibrated range.
+# Raise to 3.0 if segments still too short. Set to 1.0 to disable.
 # Ratio = 3:1 (exact integer) — lerp downsampler in worklet.js has zero aliasing
 
 [server]

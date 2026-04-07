@@ -150,7 +150,7 @@ def _transcribe_whisper(audio: np.ndarray, previous_text: str = "") -> str:
         word_timestamps=False,
         initial_prompt=previous_text or None,  # None = no conditioning
         condition_on_previous_text=False,       # we manage context ourselves via initial_prompt
-        no_speech_threshold=0.9,               # upstream VAD already filters silence; be permissive here
+        no_speech_threshold=0.6,               # discard near-silence segments; gain fix handles low-level speech upstream
         temperature=0.0,                        # greedy; disable fallback temperatures
     )
     return " ".join(seg.text for seg in segments).strip()

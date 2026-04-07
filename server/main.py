@@ -198,6 +198,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     model = model_for_lang(lang)
     min_speech_samples = int(CONFIG.get("vad", {}).get("min_speech_ms", 500) / 1000 * 16000)
     min_rms = float(CONFIG.get("vad", {}).get("min_rms", 0.02))
+    audio_gain = float(CONFIG.get("audio", {}).get("gain", 2.0))
     loop = asyncio.get_running_loop()
 
     # Shared transcript context for initial_prompt.
@@ -263,6 +264,8 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
             # Convert Int16 PCM → float32 [-1, 1]
             pcm_int16 = np.frombuffer(frame, dtype=np.int16)
             pcm = pcm_int16.astype(np.float32) / 32768.0
+            if audio_gain != 1.0:
+                pcm = np.clip(pcm * audio_gain, -1.0, 1.0)
             vad.ingest_pcm(pcm)
 
             if vad.should_flush():
