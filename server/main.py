@@ -169,7 +169,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     queue_maxsize = CONFIG.get("server", {}).get("queue_maxsize", 600)
     frame_queue: asyncio.Queue[Optional[bytes]] = asyncio.Queue(maxsize=queue_maxsize)
     # Unbounded: lag grows gracefully rather than dropping audio when ASR is slow.
-    segment_queue: asyncio.Queue[Optional[tuple]] = asyncio.Queue()
+    segment_queue: asyncio.Queue[Optional[np.ndarray]] = asyncio.Queue()
     session = TranscriptSession(lang=lang)
 
     # Transcript file for this session
@@ -198,14 +198,9 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     model = model_for_lang(lang)
     min_speech_samples = int(CONFIG.get("vad", {}).get("min_speech_ms", 500) / 1000 * 16000)
     min_rms = float(CONFIG.get("vad", {}).get("min_rms", 0.02))
-    audio_gain = float(CONFIG.get("audio", {}).get("gain", 2.0))
+    target_rms = float(CONFIG.get("audio", {}).get("target_rms", 0.10))
+    rms_floor  = float(CONFIG.get("audio", {}).get("rms_floor", 0.01))
     loop = asyncio.get_running_loop()
-
-    # Shared transcript context for initial_prompt.
-    # asr_worker appends after each transcription; vad_worker snapshots at flush time.
-    # No locking needed: asyncio is single-threaded — vad_worker only runs while
-    # asr_worker is suspended in run_in_executor, not during the append.
-    _prev_text: list[str] = []
 
     # -----------------------------------------------------------------------
     # Stage 1: receiver — WebSocket → frame_queue
@@ -237,13 +232,25 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
         Consume frames continuously. Run Silero VAD synchronously (< 1ms/frame).
         Push complete speech segments to segment_queue.
         Never awaits ASR — fully decoupled from asr_worker.
+
+        Normalization: each frame is adaptively normalized to target_rms before VAD
+        ingestion. This makes VAD behaviour level-independent regardless of tab audio
+        source (tabCapture RMS varies 0.02-0.12 between sessions for unknown reasons).
+        Frames below rms_floor are not normalized — they are silence or background noise.
         """
         logger.info("vad_worker() started")
+
+        # Per-session telemetry: raw (pre-normalization) frame RMS values and
+        # pipeline-level dispatch accounting (distinct from VAD-internal discard_rate).
+        raw_rms_values: list[float] = []
+        asr_sent_s    = 0.0   # seconds of audio queued for ASR
+        asr_rejected_s = 0.0  # seconds flushed by VAD but rejected by min_speech/min_rms
+
         while True:
             frame = await frame_queue.get()
 
             if frame is None:
-                # Stop signal: flush trailing speech, then send sentinel to asr_worker.
+                # Stop signal: flush any trailing speech, then send sentinel.
                 if vad.has_pending_speech:
                     audio = vad.flush()
                     dur = len(audio) / 16000
@@ -251,21 +258,41 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                         rms = float(np.sqrt(np.mean(audio ** 2)))
                         if rms < min_rms:
                             logger.debug("VAD final flush skipped: RMS=%.4f < min_rms", rms)
+                            asr_rejected_s += dur
                         else:
                             logger.info("VAD final flush: %.2fs, RMS=%.4f", dur, rms)
-                            await segment_queue.put((audio, list(_prev_text[-2:])))
+                            asr_sent_s += dur
+                            await segment_queue.put(audio)
                     else:
                         logger.debug("VAD final flush skipped: %.2fs < min_speech", dur)
+                        asr_rejected_s += dur
+
                 _session_discard_rates.append(vad.discard_rate)
-                logger.info("VAD done: discard_rate=%.2f%%", vad.discard_rate * 100)
+                rms_min  = min(raw_rms_values)  if raw_rms_values else 0.0
+                rms_max  = max(raw_rms_values)  if raw_rms_values else 0.0
+                rms_mean = sum(raw_rms_values) / len(raw_rms_values) if raw_rms_values else 0.0
+                logger.info(
+                    "VAD done: vad_discard=%.1f%% | sent=%.1fs | post_filter_rejected=%.1fs"
+                    " | raw_rms min=%.4f max=%.4f mean=%.4f",
+                    vad.discard_rate * 100,
+                    asr_sent_s, asr_rejected_s,
+                    rms_min, rms_max, rms_mean,
+                )
                 await segment_queue.put(None)
                 return
 
             # Convert Int16 PCM → float32 [-1, 1]
             pcm_int16 = np.frombuffer(frame, dtype=np.int16)
             pcm = pcm_int16.astype(np.float32) / 32768.0
-            if audio_gain != 1.0:
-                pcm = np.clip(pcm * audio_gain, -1.0, 1.0)
+
+            # Adaptive normalization: normalize each frame to target_rms so that
+            # Silero's threshold operates at a consistent amplitude regardless of
+            # how loud or quiet the tab audio source is this session.
+            raw_rms = float(np.sqrt(np.mean(pcm ** 2)))
+            raw_rms_values.append(raw_rms)
+            if raw_rms > rms_floor:
+                pcm = np.clip(pcm * (target_rms / raw_rms), -1.0, 1.0)
+
             vad.ingest_pcm(pcm)
 
             if vad.should_flush():
@@ -273,16 +300,16 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                 dur = len(audio) / 16000
                 if len(audio) < min_speech_samples:
                     logger.debug("VAD flush skipped: %.2fs < min_speech", dur)
+                    asr_rejected_s += dur
                     continue
                 rms = float(np.sqrt(np.mean(audio ** 2)))
                 if rms < min_rms:
                     logger.debug("VAD flush skipped: RMS=%.4f < min_rms", rms)
+                    asr_rejected_s += dur
                     continue
                 logger.info("VAD flush: %.2fs, RMS=%.4f → queued for ASR", dur, rms)
-                # Snapshot _prev_text at flush time. If asr_worker is mid-inference
-                # on the prior segment, this gives N-1 context instead of N — a minor
-                # WER trade-off acceptable vs. the alternative of dropping audio.
-                await segment_queue.put((audio, list(_prev_text[-2:])))
+                asr_sent_s += dur
+                await segment_queue.put(audio)
 
     # -----------------------------------------------------------------------
     # Stage 3: asr_worker — segment_queue → WebSocket
@@ -305,11 +332,10 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                     pass
                 return
 
-            audio, prev_text_snapshot = item
-            prev = " ".join(prev_text_snapshot)
+            audio = item
 
             try:
-                text = await loop.run_in_executor(_executor, model.transcribe, audio, prev)
+                text = await loop.run_in_executor(_executor, model.transcribe, audio)
             except Exception as e:
                 logger.error("ASR transcription error: %s", e)
                 continue
@@ -317,9 +343,6 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
             logger.info("Transcribed: %d chars", len(text))
 
             if text:
-                _prev_text.append(text)
-                if len(_prev_text) > 20:
-                    del _prev_text[:-10]
                 session.append(text)
                 ts_now = datetime.datetime.now().strftime("%H:%M:%S")
                 with transcript_file.open("a", encoding="utf-8") as _tf:

@@ -94,13 +94,12 @@ def _load_vosk(model_name: str, intra_op_num_threads: int) -> None:
         raise RuntimeError(f"Failed to load vosk fallback ({model_name}): {e}") from e
 
 
-def transcribe(audio: np.ndarray, previous_text: str = "") -> str:
+def transcribe(audio: np.ndarray) -> str:
     """
     Transcribe float32 16kHz PCM. Returns UTF-8 Russian text.
 
     Args:
         audio: float32 numpy array, 16kHz, amplitude in [-1, 1]
-        previous_text: last 1-2 transcribed segments, used as context for whisper
 
     Returns:
         Transcribed text, or empty string if model returns nothing.
@@ -117,7 +116,7 @@ def transcribe(audio: np.ndarray, previous_text: str = "") -> str:
         if _backend == "gigaam_v3":
             result = _transcribe_gigaam(audio)
         elif _backend == "whisper":
-            result = _transcribe_whisper(audio, previous_text)
+            result = _transcribe_whisper(audio)
         elif _backend == "vosk":
             result = _transcribe_vosk(audio)
         else:
@@ -140,7 +139,7 @@ def _transcribe_gigaam(audio: np.ndarray) -> str:
     return str(result) if result else ""
 
 
-def _transcribe_whisper(audio: np.ndarray, previous_text: str = "") -> str:
+def _transcribe_whisper(audio: np.ndarray) -> str:
     segments, _ = _model.transcribe(
         audio,
         language="ru",

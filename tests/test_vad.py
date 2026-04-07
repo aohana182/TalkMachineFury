@@ -138,7 +138,7 @@ class TestVADSessionContract:
         vad.reset_state()
         assert not vad.has_pending_speech
         assert vad._samples_ingested == 0
-        assert vad._samples_dispatched == 0
+        assert vad._samples_flushed == 0
         assert np.all(vad._state == 0)
         assert np.all(vad._context == 0)
 

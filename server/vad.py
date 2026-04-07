@@ -79,7 +79,10 @@ class VADSession:
 
         # Metrics
         self._samples_ingested: int = 0
-        self._samples_dispatched: int = 0
+        # _samples_flushed counts audio returned by flush() — what the VAD itself
+        # committed to speech buffers.  Pipeline-level filtering (min_speech_ms,
+        # min_rms) happens in the caller; discard_rate measures VAD-internal loss only.
+        self._samples_flushed: int = 0
 
     def ingest_pcm(self, pcm: np.ndarray) -> bool:
         """
@@ -144,7 +147,7 @@ class VADSession:
             return np.array([], dtype=np.float32)
 
         audio = np.concatenate(self._speech_buffer)
-        self._samples_dispatched += len(audio)
+        self._samples_flushed += len(audio)
 
         self._speech_buffer.clear()
         self._speech_samples = 0
@@ -162,13 +165,16 @@ class VADSession:
         self._silence_frames = 0
         self._in_speech = False
         self._samples_ingested = 0
-        self._samples_dispatched = 0
+        self._samples_flushed = 0
 
     @property
     def discard_rate(self) -> float:
+        """Fraction of ingested audio the VAD never buffered as speech.
+        Measures VAD-internal loss only — pipeline filtering (min_speech_ms,
+        min_rms) applied after flush() is tracked separately in the caller."""
         if self._samples_ingested == 0:
             return 0.0
-        return (self._samples_ingested - self._samples_dispatched) / self._samples_ingested
+        return (self._samples_ingested - self._samples_flushed) / self._samples_ingested
 
     @property
     def has_pending_speech(self) -> bool:

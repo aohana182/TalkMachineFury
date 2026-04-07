@@ -5,7 +5,7 @@
 [vad]
 threshold = 0.25
 min_silence_ms = 1000
-min_speech_ms = 2000
+min_speech_ms = 500
 min_rms = 0.02
 max_speech_s = 25.0
 # threshold=0.40: FNR (dropped speech) costs more than FPR (noise transcribed)
@@ -31,11 +31,15 @@ russian = "whisper:medium"
 [audio]
 target_sample_rate = 16000
 hardware_sample_rate = 48000   # confirmed by Gate 0B on target machine
-gain = 3.0
-# gain: amplify tab audio before VAD and ASR. Tab capture arrives at ~0.05 RMS;
-# Silero VAD calibrated for ~0.10. 2x gain brings it into calibrated range.
-# Raise to 3.0 if segments still too short. Set to 1.0 to disable.
-# Ratio = 3:1 (exact integer) — lerp downsampler in worklet.js has zero aliasing
+target_rms = 0.10
+# Adaptive normalization target. Tab audio RMS varies 0.02-0.12 between sessions;
+# a fixed gain cannot compensate. Each 512-sample frame is normalized to this RMS
+# before Silero VAD ingestion, making threshold behaviour level-independent.
+# 0.10 is the empirically confirmed range where Silero threshold=0.25 works correctly.
+rms_floor = 0.01
+# Frames with raw RMS below this value skip normalization entirely (they are silence
+# or background noise, not speech). Prevents noise amplification on quiet frames.
+# Typical HVAC/fan ambient noise is 0.003-0.008 — well below this floor.
 
 [server]
 host = "localhost"

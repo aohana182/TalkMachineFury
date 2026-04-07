@@ -75,8 +75,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  if (msg.type === 'transcript-update' || msg.type === 'capture-error' || msg.type === 'ready-to-stop') {
-    // Forward to popup (if open)
+  if (msg.type === 'transcript-update' || msg.type === 'capture-error'
+      || msg.type === 'ready-to-stop' || msg.type === 'ws-connected') {
+    if (msg.type === 'ws-connected') {
+      // WebSocket is confirmed open — persist so popup restores correctly on reopen.
+      chrome.storage.session.set({ tmf_state: 'listening' });
+    }
     chrome.runtime.sendMessage(msg).catch(() => {}); // popup may not be open — ignore
     return false;
   }

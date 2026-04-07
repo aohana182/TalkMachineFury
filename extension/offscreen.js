@@ -7,8 +7,7 @@
  *      The tabCapture streamId expires if any async operation precedes getUserMedia().
  *   3. WebSocket is initialized after getUserMedia() resolves.
  *
- * Phase 1B stub: WebSocket logs frames to console instead of sending.
- * Phase 4: Replace _sendFrame() with real WebSocket send.
+ * WebSocket streams PCM frames to the local ASR server (ws://localhost:8765/asr).
  */
 
 const SERVER_URL = 'ws://localhost:8765/asr';
@@ -124,13 +123,11 @@ async function _initPipeline(stream) {
 // Mic PCM relay — frames arrive from mic-capture.html via extension messages
 // ---------------------------------------------------------------------------
 
-// mic-capture.html is a visible window that owns the mic stream (Brave denies
-// getUserMedia in offscreen documents). It sends each PCM frame here, and we
-// forward it over the same WebSocket as tab audio.
+// mic-content.js (injected into the meeting tab) owns the mic stream and sends
+// each PCM frame here via structured clone. We forward it over the same WebSocket.
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'mic-pcm' && _isRunning) {
-    // Convert Int16 array back to ArrayBuffer (sent as Array to survive JSON serialization).
-    _sendFrame(new Int16Array(msg.samples).buffer);
+    _sendFrame(msg.samples); // ArrayBuffer via structured clone — no conversion needed
   }
 });
 

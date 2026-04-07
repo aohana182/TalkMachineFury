@@ -151,14 +151,14 @@ btnStart.addEventListener('click', async () => {
   // that 30s startup, re-blocking the UI before the server is up.
   const lang = langSelect.value;
   const response = await chrome.runtime.sendMessage({ type: 'start-capture', lang });
-  if (response?.ok) {
-    setState('listening');
-  } else {
+  if (!response?.ok) {
     statusBar.className = 'error';
     statusBar.textContent = `Error: ${response?.error ?? 'Unknown'}`;
     _state = 'error';
     btnStart.disabled = false;
   }
+  // On success stay in 'connecting' — the 'ws-connected' message from offscreen.js
+  // advances the state to 'listening' once the WebSocket handshake completes.
 });
 
 btnStop.addEventListener('click', async () => {
@@ -209,6 +209,12 @@ transcript.addEventListener('mouseleave', () => { _autoScroll = true; });
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === 'ws-connected') {
+    // WebSocket handshake confirmed — advance from 'connecting' to 'listening'.
+    if (_state === 'connecting') setState('listening');
+    return false;
+  }
+
   if (msg.type === 'transcript-update') {
     const { lines } = msg.data;
     _transcript = lines.map(l => ({ text: l.text, ts: l.ts }));
@@ -250,8 +256,11 @@ async function init() {
     return;
   }
 
-  if (tmf_state === 'listening' || tmf_state === 'connecting') {
+  if (tmf_state === 'listening') {
     setState('listening');
+  } else if (tmf_state === 'connecting') {
+    // WebSocket not yet confirmed open — stay in connecting until ws-connected fires.
+    setState('connecting');
   } else if (tmf_state === 'stopping') {
     setState('stopped');
   } else {
