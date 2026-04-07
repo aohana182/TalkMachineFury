@@ -41,13 +41,18 @@ if (!window.__tmfMicActive) {
     });
 
     _workletNode.port.onmessage = ({ data }) => {
-      if (_active) {
-        // ArrayBuffer is not JSON-serializable — chrome.runtime.sendMessage uses JSON.
-        // Send as Int16 array instead; offscreen.js converts back to ArrayBuffer.
+      if (!_active) return;
+      // ArrayBuffer is not JSON-serializable — chrome.runtime.sendMessage uses JSON.
+      // Send as Int16 array instead; offscreen.js converts back to ArrayBuffer.
+      // Wrap in try-catch: sendMessage throws synchronously when extension context is
+      // invalidated (e.g. after reload). .catch() alone doesn't stop synchronous throws.
+      try {
         chrome.runtime.sendMessage({
           type: 'mic-pcm',
           samples: Array.from(new Int16Array(data)),
         }).catch(() => {});
+      } catch (_) {
+        _active = false; // context gone — stop sending, end the error storm
       }
     };
 

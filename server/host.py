@@ -44,13 +44,15 @@ def _server_running() -> bool:
 
 def _start_server() -> None:
     python = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
+    log_path = ROOT / "server.log"
+    log_file = open(log_path, "a", encoding="utf-8")
     subprocess.Popen(
         [python, "-m", "uvicorn", "server.main:app", "--port", str(PORT),
-         "--log-level", "warning"],
+         "--log-level", "info"],
         cwd=str(ROOT),
         creationflags=subprocess.CREATE_NO_WINDOW,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=log_file,
     )
     # Wait up to 30s for server to be ready
     for _ in range(30):

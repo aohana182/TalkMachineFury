@@ -46,6 +46,9 @@ async function ensureOffscreen() {
       url: OFFSCREEN_URL,
       reasons: ['USER_MEDIA', 'AUDIO_PLAYBACK'],
       justification: 'Capture tab audio and stream PCM to local ASR server',
+    }).catch((e) => {
+      // If document already exists (race between hasDocument and createDocument), proceed.
+      if (!e?.message?.includes('single offscreen document')) throw e;
     });
   }
 }
@@ -112,16 +115,33 @@ function closeMicCapture() {
   chrome.runtime.sendMessage({ type: 'release-mic' }).catch(() => {});
 }
 
+async function checkServer() {
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 1500);
+    const r = await fetch('http://localhost:8765/health', { signal: ctrl.signal });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function ensureServer() {
+  // Fast path: if server already responding, skip native host entirely.
+  // Native host requires starting a Python process which takes 10-30s on Windows
+  // (antivirus scanning, module imports). Don't pay that cost when unnecessary.
+  if (await checkServer()) return;
+
+  // Server not running — use native host to start it
   return new Promise((resolve, reject) => {
     chrome.runtime.sendNativeMessage(
       'com.talkmachinefury.host',
       { type: 'start-server' },
       (response) => {
         if (chrome.runtime.lastError) {
-          // Native host not registered — server must be started manually
+          // Native host not registered — non-fatal, WebSocket will fail and surface error
           console.warn('[TMF] Native host unavailable:', chrome.runtime.lastError.message);
-          resolve(); // non-fatal — popup will show "Start the server first" if down
+          resolve();
         } else if (response?.ok) {
           resolve();
         } else {
@@ -145,6 +165,10 @@ async function handleStart(msg) {
 
   await ensureServer();
   await ensureMicCapture(tab.id);  // injects into meeting tab, waits for mic-ready
+  // Force-close any lingering offscreen doc before starting — a previous session
+  // or extension reload may have left an active tab capture stream open, which
+  // causes getMediaStreamId to fail with "Cannot capture a tab with an active stream."
+  await closeOffscreen();
   await ensureOffscreen();
 
   await chrome.storage.session.set({ tmf_tab_title: tab.title || 'meeting' });

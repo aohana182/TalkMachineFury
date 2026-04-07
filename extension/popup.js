@@ -88,6 +88,7 @@ function render() {
 
     case 'error':
       statusBar.className = 'error';
+      btnStart.disabled = false;
       break;
   }
 

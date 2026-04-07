@@ -26,6 +26,10 @@ let _isRunning = false;
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'start-tab-capture') {
+    if (_isRunning) {
+      // Already running — tear down existing pipeline before starting new one.
+      _cleanup();
+    }
     // CRITICAL: navigator.mediaDevices.getUserMedia() is called synchronously
     // (no await preceding it). The streamId expires if we yield first.
     _lang = msg.lang || 'ru';
