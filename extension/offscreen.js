@@ -90,6 +90,21 @@ async function _initPipeline(stream) {
   const tabSource = _audioCtx.createMediaStreamSource(stream);
   tabSource.connect(_workletNode);
 
+  // Detect silent stream dropout. Chrome can silently kill the audio track
+  // without triggering a WebSocket error or AudioContext event.
+  stream.getAudioTracks().forEach(track => {
+    track.addEventListener('ended', () => {
+      console.warn('[TMF offscreen] Audio track ended — stream disconnected');
+      if (_isRunning) {
+        chrome.runtime.sendMessage({ type: 'capture-error', error: 'Audio stream disconnected' }).catch(() => {});
+        _isRunning = false;
+      }
+    });
+    track.addEventListener('mute', () => {
+      console.warn('[TMF offscreen] Audio track muted');
+    });
+  });
+
   // Mic PCM arrives via chrome.runtime messages from mic-capture.html (see bottom of file).
   // mic-capture.html is a visible window that holds the mic stream for the session.
 
