@@ -197,6 +197,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
     )
     model = model_for_lang(lang)
     min_speech_samples = int(CONFIG.get("vad", {}).get("min_speech_ms", 500) / 1000 * 16000)
+    min_rms = float(CONFIG.get("vad", {}).get("min_rms", 0.02))
     loop = asyncio.get_running_loop()
 
     # Shared transcript context for initial_prompt.
@@ -247,8 +248,11 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                     dur = len(audio) / 16000
                     if len(audio) >= min_speech_samples:
                         rms = float(np.sqrt(np.mean(audio ** 2)))
-                        logger.info("VAD final flush: %.2fs, RMS=%.4f", dur, rms)
-                        await segment_queue.put((audio, list(_prev_text[-2:])))
+                        if rms < min_rms:
+                            logger.debug("VAD final flush skipped: RMS=%.4f < min_rms", rms)
+                        else:
+                            logger.info("VAD final flush: %.2fs, RMS=%.4f", dur, rms)
+                            await segment_queue.put((audio, list(_prev_text[-2:])))
                     else:
                         logger.debug("VAD final flush skipped: %.2fs < min_speech", dur)
                 _session_discard_rates.append(vad.discard_rate)
@@ -268,6 +272,9 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
                     logger.debug("VAD flush skipped: %.2fs < min_speech", dur)
                     continue
                 rms = float(np.sqrt(np.mean(audio ** 2)))
+                if rms < min_rms:
+                    logger.debug("VAD flush skipped: RMS=%.4f < min_rms", rms)
+                    continue
                 logger.info("VAD flush: %.2fs, RMS=%.4f → queued for ASR", dur, rms)
                 # Snapshot _prev_text at flush time. If asr_worker is mid-inference
                 # on the prior segment, this gives N-1 context instead of N — a minor
@@ -308,9 +315,12 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
 
             if text:
                 _prev_text.append(text)
+                if len(_prev_text) > 20:
+                    del _prev_text[:-10]
                 session.append(text)
                 ts_now = datetime.datetime.now().strftime("%H:%M:%S")
-                transcript_file.open("a", encoding="utf-8").write(f"[{ts_now}] {text}\n")
+                with transcript_file.open("a", encoding="utf-8") as _tf:
+                    _tf.write(f"[{ts_now}] {text}\n")
                 try:
                     await ws.send_json(session.to_dict())
                 except Exception:

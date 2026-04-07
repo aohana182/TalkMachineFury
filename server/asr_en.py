@@ -39,7 +39,7 @@ def load(intra_op_num_threads: int = 2) -> None:
         raise RuntimeError(f"Failed to load English ASR model: {e}") from e
 
 
-def transcribe(audio: np.ndarray) -> str:
+def transcribe(audio: np.ndarray, previous_text: str = "") -> str:
     """
     Transcribe float32 16kHz PCM. Returns English text.
 

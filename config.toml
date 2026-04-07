@@ -6,6 +6,7 @@
 threshold = 0.40
 min_silence_ms = 1000
 min_speech_ms = 500
+min_rms = 0.02
 max_speech_s = 25.0
 # threshold=0.40: FNR (dropped speech) costs more than FPR (noise transcribed)
 # min_silence_ms=1000: Russian meeting speech has natural pauses ~0.5-1s mid-sentence;

@@ -4,7 +4,7 @@ Russian ASR.
 Backends (selected via config.toml `russian = ...`):
   gigaam-v3-e2e-ctc   — GigaAM v3 CTC via onnx-asr (faster, ~24% WER)
   gigaam-v3-e2e-rnnt  — GigaAM v3 RNN-T via onnx-asr (~21% WER)
-  whisper:<size>      — faster-whisper multilingual, lang=ru (beam=5)
+  whisper:<size>      — faster-whisper multilingual, lang=ru (beam=1, greedy)
                         sizes: tiny, base, small, medium, large-v3
                         medium recommended: ~18.8% WER, CPU-feasible
   vosk:<model-name>   — sherpa-onnx fallback
@@ -150,7 +150,7 @@ def _transcribe_whisper(audio: np.ndarray, previous_text: str = "") -> str:
         word_timestamps=False,
         initial_prompt=previous_text or None,  # None = no conditioning
         condition_on_previous_text=False,       # we manage context ourselves via initial_prompt
-        no_speech_threshold=0.6,               # discard near-silence segments
+        no_speech_threshold=0.9,               # upstream VAD already filters silence; be permissive here
         temperature=0.0,                        # greedy; disable fallback temperatures
     )
     return " ".join(seg.text for seg in segments).strip()
