@@ -29,7 +29,8 @@ const btnSave    = document.getElementById('btn-save');
 
 /** @type {'idle'|'connecting'|'listening'|'transcribing'|'stopped'|'error'|'server-offline'} */
 let _state = 'idle';
-let _transcript = [];   // [{text, ts}]
+let _errorMessage = '';   // persists through render() for the 'error' case
+let _transcript = [];     // [{text, ts}]
 let _autoScroll = true;
 
 function setState(next) {
@@ -87,6 +88,7 @@ function render() {
       break;
 
     case 'error':
+      statusBar.textContent = _errorMessage || 'Error — check extension console';
       statusBar.className = 'error';
       btnStart.disabled = false;
       break;
@@ -152,10 +154,8 @@ btnStart.addEventListener('click', async () => {
   const lang = langSelect.value;
   const response = await chrome.runtime.sendMessage({ type: 'start-capture', lang });
   if (!response?.ok) {
-    statusBar.className = 'error';
-    statusBar.textContent = `Error: ${response?.error ?? 'Unknown'}`;
-    _state = 'error';
-    btnStart.disabled = false;
+    _errorMessage = `Error: ${response?.error ?? 'Unknown'}`;
+    setState('error');
   }
   // On success stay in 'connecting' — the 'ws-connected' message from offscreen.js
   // advances the state to 'listening' once the WebSocket handshake completes.
@@ -229,11 +229,8 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 
   if (msg.type === 'capture-error') {
-    _state = 'error';
-    statusBar.className = 'error';
-    statusBar.textContent = `Error: ${msg.error}`;
-    btnStart.disabled = false;
-    render();
+    _errorMessage = `Error: ${msg.error || 'Connection failed'}`;
+    setState('error');
     return false;
   }
 });

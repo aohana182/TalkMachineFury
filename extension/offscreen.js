@@ -127,7 +127,7 @@ async function _initPipeline(stream) {
 // each PCM frame here via structured clone. We forward it over the same WebSocket.
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'mic-pcm' && _isRunning) {
-    _sendFrame(msg.samples); // ArrayBuffer via structured clone — no conversion needed
+    _sendFrame(new Int16Array(msg.samples).buffer);
   }
 });
 
