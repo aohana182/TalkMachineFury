@@ -139,6 +139,16 @@ def _transcribe_gigaam(audio: np.ndarray) -> str:
     return str(result) if result else ""
 
 
+def _is_repetition_loop(text: str, threshold: float = 0.5) -> bool:
+    """True if a single token dominates >50% of the output — Whisper hallucination."""
+    words = text.split()
+    if len(words) < 6:
+        return False
+    from collections import Counter
+    top_word, top_count = Counter(words).most_common(1)[0]
+    return top_count / len(words) > threshold
+
+
 def _transcribe_whisper(audio: np.ndarray) -> str:
     segments, _ = _model.transcribe(
         audio,
@@ -148,9 +158,17 @@ def _transcribe_whisper(audio: np.ndarray) -> str:
         vad_filter=False,
         word_timestamps=False,
         no_speech_threshold=0.6,
-        temperature=0.0,
+        # compression_ratio_threshold: Whisper falls back through temperatures when
+        # output looks degenerate (high repetition = high compression ratio).
+        compression_ratio_threshold=2.4,
+        log_prob_threshold=-1.0,
+        temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        # condition_on_previous_text=False prevents hallucination cascade across
+        # Whisper's internal sub-segments within one VAD chunk.
+        condition_on_previous_text=False,
     )
-    return " ".join(seg.text for seg in segments).strip()
+    texts = [seg.text for seg in segments if not _is_repetition_loop(seg.text)]
+    return " ".join(texts).strip()
 
 
 def _transcribe_vosk(audio: np.ndarray) -> str:

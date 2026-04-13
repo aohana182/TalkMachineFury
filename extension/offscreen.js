@@ -125,9 +125,12 @@ async function _initPipeline(stream) {
 
 // mic-content.js (injected into the meeting tab) owns the mic stream and sends
 // each PCM frame here via structured clone. We forward it over the same WebSocket.
+// Mic PCM disabled: mic frames interleaved with tab audio on the same WebSocket
+// corrupt VAD (alternating speech/silence confuses Silero). Tab audio alone is
+// sufficient for meeting transcription. Re-enable only with separate WS connection.
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'mic-pcm' && _isRunning) {
-    _sendFrame(new Int16Array(msg.samples).buffer);
+    // _sendFrame(new Int16Array(msg.samples).buffer);
   }
 });
 

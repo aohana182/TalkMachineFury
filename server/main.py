@@ -106,7 +106,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Talk Machine Fury", version="0.5.0", lifespan=lifespan)
+app = FastAPI(title="Talk Machine Fury", version="0.6.0", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +290,7 @@ async def asr_ws(ws: WebSocket, lang: str = "ru"):
             # how loud or quiet the tab audio source is this session.
             raw_rms = float(np.sqrt(np.mean(pcm ** 2)))
             raw_rms_values.append(raw_rms)
+
             if raw_rms > rms_floor:
                 pcm = np.clip(pcm * (target_rms / raw_rms), -1.0, 1.0)
 

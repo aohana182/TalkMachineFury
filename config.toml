@@ -8,11 +8,11 @@ min_silence_ms = 1000
 min_speech_ms = 500
 min_rms = 0.02
 max_speech_s = 25.0
-# threshold=0.40: FNR (dropped speech) costs more than FPR (noise transcribed)
+# threshold=0.25: calibrated for post-normalization RMS ~0.10.
 # min_silence_ms=1000: Russian meeting speech has natural pauses ~0.5-1s mid-sentence;
 #   450ms was cutting mid-phrase. 1000ms waits for a real sentence boundary.
-# min_speech_ms=500: segments shorter than 0.5s are skipped — whisper hallucinates
-#   on sub-second clips (produces "Да.", "Ну.", fused words at boundaries).
+# min_speech_ms=500: whisper:small is fast enough (RTF ~0.09) that short segments
+#   don't back up the queue — no need to filter aggressively.
 # max_speech_s=25: longer segments give whisper more context → better accuracy.
 
 [inference]
@@ -22,7 +22,7 @@ inter_op_num_threads = 1
 # Changing requires a new benchmark run.
 
 [models]
-russian = "whisper:medium"
+russian = "whisper:small"
 # whisper:<size> = faster-whisper multilingual, lang=ru, beam=5 (medium: 18.8% WER)
 # gigaam-v3-e2e-ctc  = onnx-asr CTC (~24% WER, faster)
 # gigaam-v3-e2e-rnnt = onnx-asr RNN-T (~21% WER)
@@ -39,7 +39,8 @@ target_rms = 0.10
 rms_floor = 0.01
 # Frames with raw RMS below this value skip normalization entirely (they are silence
 # or background noise, not speech). Prevents noise amplification on quiet frames.
-# Typical HVAC/fan ambient noise is 0.003-0.008 — well below this floor.
+# 0.01 is correct: actual speech frames are RMS 0.04-0.20. Frames below 0.01 are
+# mic noise, DTX comfort noise, or silence — amplifying them 7-21x corrupts VAD.
 
 [server]
 host = "localhost"

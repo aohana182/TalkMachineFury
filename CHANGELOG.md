@@ -2,6 +2,42 @@
 
 ---
 
+## [0.6.0] — 2026-04-13
+
+### Russian transcription: good enough to ship
+
+**Russian quality declared sufficient for meeting use.** All changes in this release target hallucination elimination and pipeline stability — WER on clean corpus is acceptable, live meeting audio is the target use case.
+
+**Model downgrade: `whisper:medium` → `whisper:small`**
+- RTF drops from ~0.35 to ~0.09 — segments process ~4x faster
+- WER increase is acceptable: medium was 18.8% on clean corpus; small is higher but real meeting speech benefits more from low latency than marginal accuracy
+- `whisper:small` fits comfortably in RAM on i7-1355U; no swapping observed
+
+**Hallucination guard (`asr_ru.py`)**
+- Added `_is_repetition_loop()`: filters any segment where a single token dominates >50% of the output — Whisper's characteristic failure mode on marginal audio
+- Temperature fallback: `[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]` with `compression_ratio_threshold=2.4` — Whisper self-detects degenerate output and retries at higher temperature
+- `condition_on_previous_text=False`: prevents hallucination cascade across Whisper's internal sub-segments within one VAD chunk
+
+**Mic PCM disabled (`extension/offscreen.js`)**
+- Mic frames interleaved with tab audio on the same WebSocket were corrupting VAD (alternating speech/silence confuses Silero state)
+- Tab audio alone is sufficient for meeting transcription
+- Re-enable only with a separate WebSocket connection
+
+**Adaptive normalization (committed, previously unreleased)**
+- Per-frame RMS normalization: `target_rms=0.10`, `rms_floor=0.01`
+- Replaces fixed `gain=3.0` — handles session-to-session RMS variance in tabCapture without over-amplifying silence frames
+- `rms_floor=0.01` guards against amplifying DTX comfort noise or mic noise 7–21×
+
+**Pipeline recovery (from 2026-04-08 session)**
+- `min_speech_ms` reverted 2000 → 500: the 2000ms value was silently discarding all short segments
+- `discard_rate` metric fixed: measures VAD-internal loss only, not post-flush pipeline rejection
+- Popup error display fixed: `render()` was clearing error text before it could be shown — users saw blank state instead of the actual error message
+- WebSocket `ws-connected` message now forwarded to popup; popup stays in "connecting" until WebSocket is confirmed open
+
+**Files changed:** `server/main.py`, `server/asr_ru.py`, `extension/offscreen.js`, `config.toml`, `CHANGELOG.md`
+
+---
+
 ## [0.5.0] — 2026-04-06
 
 ### Three-stage pipeline — no audio loss under ASR load
